@@ -27,7 +27,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'f-jet-eight.vercel.app';
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://f-jet-eight.vercel.app';
 
 // ✅ Middlewares
 app.use(cors({
@@ -41,7 +41,7 @@ app.use(cookieParser());
 
 app.use((req, res, next) => {
   res.removeHeader("X-Frame-Options");
-  res.setHeader("Content-Security-Policy", "frame-ancestors 'self' f-jet-eight.vercel.app");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'self' https://f-jet-eight.vercel.app");
   next();
 });
 
