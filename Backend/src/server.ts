@@ -27,11 +27,11 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'http://localhost:8081';
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'f-jet-eight.vercel.app';
 
 // ✅ Middlewares
 app.use(cors({
-  origin: [FRONTEND_ORIGIN, "http://localhost:8080", "http://localhost:4000"],             // ❗ NOT "*"
+  origin: [FRONTEND_ORIGIN, "f-jet-eight.vercel.app", "http://localhost:4000"],             // ❗ NOT "*"
   credentials: true,                   // allow sending cookies
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
@@ -41,7 +41,7 @@ app.use(cookieParser());
 
 app.use((req, res, next) => {
   res.removeHeader("X-Frame-Options");
-  res.setHeader("Content-Security-Policy", "frame-ancestors 'self' http://localhost:8080");
+  res.setHeader("Content-Security-Policy", "frame-ancestors 'self' f-jet-eight.vercel.app");
   next();
 });
 
@@ -49,7 +49,7 @@ app.use((req, res, next) => {
   res.removeHeader("X-Frame-Options"); // you already had this
   res.setHeader(
     "Content-Security-Policy",
-    "frame-ancestors 'self' http://localhost:8080"
+    "frame-ancestors 'self' f-jet-eight.vercel.app"
   );
   res.setHeader("Permissions-Policy", "geolocation=(self)");
   next();
