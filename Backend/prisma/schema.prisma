@@ -1,0 +1,1102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// --- Your Original Models (Slightly Modified) ---
+
+model Tenant {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  tenantCode String   @unique
+  createdAt  DateTime @default(now())
+  isActive   Boolean  @default(true)
+
+  // Geofence Settings
+  officeLatitude  Float?
+  officeLongitude Float?
+  geofenceRadius  Int?
+
+  // Milestone Automation Settings
+  enableBirthdayEmails    Boolean @default(false)
+  enableAnniversaryEmails Boolean @default(false)
+  milestoneEmailTemplate  String?
+
+  // --- RELATIONS ---
+  users              User[]
+  subscriptions      Subscription[]
+  employeeProfiles   EmployeeProfile[]
+  documentUploads    DocumentUpload[]
+  assignedAssets     AssignedAsset[]
+  offers             Offer[]
+  // New relations for uploaded data & logs
+  attendanceRecords  AttendanceRecord[]
+  performanceReviews PerformanceReview[]
+  activityLogs       ActivityLog[]
+  tenant_api_table   tenant_api_table[]
+
+  // New Leave Relations
+  leavePolicies LeavePolicy[]
+  leaveBalances LeaveBalance[]
+  leaveRequests LeaveRequest[]
+
+  payrollRuns     PayrollRun[]
+  payrollRunItems PayrollRunItem[]
+
+  objectives Objective[]
+  keyResults KeyResult[]
+
+  reviewCycles    ReviewCycle[]
+  selfAssessments SelfAssessment[]
+  peerFeedbacks   PeerFeedback[]
+
+  promotionRequests PromotionRequest[]
+
+  announcements     Announcement[]
+  announcementReads AnnouncementRead[]
+
+  surveys         Survey[]
+  surveyQuestions SurveyQuestion[]
+  surveyResponses SurveyResponse[]
+  surveyAnswers   SurveyAnswer[]
+
+  recognitionBadges RecognitionBadge[]
+  recognitions      Recognition[]
+
+  policies              Policy[]
+  policyAcknowledgments PolicyAcknowledgment[]
+  grievanceCases        GrievanceCase[]
+  trainingModules       TrainingModule[]
+  trainingCompletions   TrainingCompletion[]
+
+  exitCases      ExitCase[]
+  clearanceTasks ClearanceTask[]
+
+  customReports      CustomReport[]
+  jobOpenings        JobOpening[] // NEW
+  externalIdentities ExternalIdentity[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  role      Role     @default(EMPLOYEE)
+
+  // Tenancy
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // --- RELATIONS ---
+  employeeProfile    EmployeeProfile?
+  documentUploads    DocumentUpload[]
+  assignedAssets     AssignedAsset[]
+  offer              Offer?
+  // New relations for uploaded data & logs
+  attendanceRecords  AttendanceRecord[]
+  performanceReviews PerformanceReview[]
+
+  // New Leave Relations
+  leaveBalances  LeaveBalance[]
+  leaveRequests  LeaveRequest[]
+  approvedLeaves LeaveRequest[] @relation("ApprovedBy")
+
+  // --- Corrected ActivityLog Relations ---
+  // Activity logs this user *performed* (e.g., an HR Admin)
+  performedActivities ActivityLog[] @relation("PerformedBy")
+  // Activity logs *about* this user (e.g., an Employee)
+  receivedActivities  ActivityLog[] @relation("TargetUser")
+
+  payrollRunItems PayrollRunItem[]
+
+  ownedObjectives Objective[] @relation("OwnedObjectives")
+  ownedKeyResults KeyResult[] @relation("OwnedKeyResults")
+
+  selfAssessments  SelfAssessment[]
+  feedbackGiven    PeerFeedback[]   @relation("FeedbackGiver")
+  feedbackReceived PeerFeedback[]   @relation("FeedbackReceiver")
+
+  submittedPromotions PromotionRequest[] @relation("SubmittedBy")
+  receivedPromotions  PromotionRequest[] @relation("ReceivedBy")
+  approvedPromotions  PromotionRequest[] @relation("ApprovedBy")
+
+  authoredAnnouncements Announcement[]     @relation("AuthoredBy")
+  announcementReads     AnnouncementRead[]
+
+  authoredSurveys Survey[]         @relation("AuthoredBy")
+  surveyResponses SurveyResponse[]
+  surveyAnswers   SurveyAnswer[]
+
+  recognitionsGiven    Recognition[] @relation("GivenBy")
+  recognitionsReceived Recognition[] @relation("ReceivedBy")
+
+  policyAcknowledgments PolicyAcknowledgment[]
+  grievanceCasesFiled   GrievanceCase[]        @relation("FiledBy")
+  grievanceCasesAbout   GrievanceCase[]        @relation("AboutUser")
+  trainingCompletions   TrainingCompletion[]
+
+  exitCases      ExitCase[] // Employee who is exiting
+  initiatedExits ExitCase[]      @relation("InitiatedBy") // HR Admin who logged it
+  clearanceTasks ClearanceTask[] @relation("ApprovedBy") // Admin who approved a task
+
+  customReports      CustomReport[]
+  jobOpenings        JobOpening[] // NEW
+  externalIdentities ExternalIdentity[]
+}
+
+model Subscription {
+  id            String    @id @default(cuid())
+  planName      String
+  receiptNumber String?
+  status        SubStatus @default(PENDING)
+  startDate     DateTime  @default(now())
+  endDate       DateTime?
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+// --- ONBOARDING MODELS ---
+
+model EmployeeProfile {
+  id String @id @default(cuid())
+
+  // --- NEW REQUIRED ID ---
+  // This is the "key" you will use to match Excel uploads.
+  // It MUST be unique for each employee in a company.
+  employeeId String
+
+  firstName             String
+  lastName              String
+  personalEmail         String?
+  phone                 String
+  altPhone              String?
+  emergencyContactName  String? // NEW
+  emergencyContactPhone String? // RENAMED
+  designation           String
+  dateOfBirth           DateTime
+  joiningDate           DateTime
+  employeeType          String
+
+  // Links
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // This index ensures employeeId is unique *per tenant*
+  @@unique([tenantId, employeeId])
+  @@index([userId])
+}
+
+model DocumentUpload {
+  id           String   @id @default(cuid())
+  documentType String
+  storagePath  String
+  fileName     String
+  uploadedAt   DateTime @default(now())
+
+  // Links
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, documentType])
+}
+
+model Offer {
+  id               String  @id @default(cuid())
+  annualCTC        Float
+  roleTitle        String
+  basic            Float
+  hra              Float
+  da               Float
+  specialAllowance Float
+  grossSalary      Float
+  pfDeduction      Float
+  tax              Float
+  netSalary        Float
+  isSigned         Boolean @default(false) // NEW: For alerts
+
+  // Links
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+}
+
+model AssignedAsset {
+  id              String  @id @default(cuid())
+  assetType       String
+  brand           String?
+  model           String?
+  serialNumber    String?
+  esiNumber       String?
+  pfNumber        String?
+  insuranceNumber String?
+  companyEmail    String?
+  idNumber        String?
+  simNumber       String?
+
+  // Links
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, assetType])
+}
+
+// --- NEW MODELS FOR UPLOADS & LOGS ---
+
+// Model for storing daily attendance from Excel upload
+model AttendanceRecord {
+  id          String           @id @default(cuid())
+  date        DateTime // The specific day
+  status      AttendanceStatus // PRESENT, ABSENT, HALF_DAY, LEAVE
+  checkIn     DateTime? // Optional check-in time
+  checkOut    DateTime? // Optional check-out time
+  hoursWorked Float?
+  notes       String?
+
+  // Links
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // An employee can only have one record per day
+  @@unique([tenantId, userId, date])
+}
+
+// Model for storing performance reviews from Excel upload
+model PerformanceReview {
+  id             String   @id @default(cuid())
+  reviewDate     DateTime
+  rating         Float // e.g., 4.5
+  reviewerName   String // e.g., "Manager Name"
+  summary        String?
+  goalsCompleted Int?
+  goalsTotal     Int?
+
+  // Links
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, reviewDate])
+}
+
+// Model for internal activity logging (your app creates this data)
+model ActivityLog {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  action      String // e.g., "ASSET_ASSIGNED", "PROFILE_UPDATED"
+  description String // e.g., "Assigned 'Dell Laptop' to John Smith"
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Who performed the action (e.g., the HR Admin)
+  performedById String
+  performedBy   User   @relation("PerformedBy", fields: [performedById], references: [id])
+
+  // Who was the action about (e.g., the Employee)
+  targetUserId String?
+  targetUser   User?   @relation("TargetUser", fields: [targetUserId], references: [id])
+
+  @@index([tenantId, timestamp])
+  @@index([performedById])
+  @@index([targetUserId])
+}
+
+model tenant_api_table {
+  id              String   @id @default(cuid())
+  tenantId        String
+  apiKey          String?   @unique
+  hashedKey       String?
+  createdByUserId String?
+  idpType         String? // e.g., "keycloak", "azure", "okta"
+  idpIssuerUrl    String? // e.g., "https://company.keycloak.com/realms/main"
+  idpClientId     String?
+  idpClientSecret String?
+  idpAuthUrl      String? // optional, for explicit config
+  idpTokenUrl     String? // optional
+  createdAt       DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+model ExternalIdentity {
+  id        String   @id @default(cuid())
+  provider  String? // e.g. "keycloak", "azure", "okta"
+  subject   String // The 'sub' claim from IdP token (unique per IdP)
+  email     String   @unique
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model LeavePolicy {
+  id          String @id @default(cuid())
+  name        String // e.g., "Casual Leave", "Sick Leave", "Earned Leave"
+  defaultDays Float // The default number of days allotted per year (e.g., 12)
+
+  // Link to the company that defined this policy
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relations
+  balances LeaveBalance[]
+  requests LeaveRequest[]
+
+  @@unique([tenantId, name]) // A tenant can't have two policies with the same name
+}
+
+model LeaveBalance {
+  id           String @id @default(cuid())
+  year         Int // The year this balance is for (e.g., 2025)
+  daysAllotted Float // How many days the employee has in total (e.g., 12)
+  daysUsed     Float  @default(0) // How many days they've already taken
+
+  // Links
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policyId String
+  policy   LeavePolicy @relation(fields: [policyId], references: [id])
+
+  // An employee can only have one balance per policy per year
+  @@unique([tenantId, userId, policyId, year])
+}
+
+// This is the actual leave request made by an employee
+model LeaveRequest {
+  id          String      @id @default(cuid())
+  startDate   DateTime
+  endDate     DateTime
+  days        Float // The number of days requested
+  reason      String
+  status      LeaveStatus @default(PENDING)
+  appliedDate DateTime    @default(now())
+
+  // Optional notes from the admin who approved/rejected it
+  adminNotes String?
+
+  daysLWP Float @default(0)
+
+  // Links
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  policyId String
+  policy   LeavePolicy @relation(fields: [policyId], references: [id])
+
+  // Who approved/rejected this?
+  approvedById String?
+  approvedBy   User?   @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([tenantId, status])
+  @@index([userId])
+}
+
+// --- NEW: PAYROLL MODELS ---
+
+// A record of a completed payroll for a specific month
+model PayrollRun {
+  id              String   @id @default(cuid())
+  month           Int // e.g., 1 (for January)
+  year            Int // e.g., 2025
+  status          String // e.g., "PROCESSED", "EXPORTED"
+  totalEmployees  Int
+  totalGross      Float
+  totalDeductions Float
+  totalNet        Float
+  processedAt     DateTime @default(now())
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relation to all the individual payslips in this run
+  items PayrollRunItem[]
+
+  @@unique([tenantId, month, year]) // Only one payroll run per month
+}
+
+// A single employee's "payslip" for that payroll run
+model PayrollRunItem {
+  id String @id @default(cuid())
+
+  // The calculated salary components
+  basicSalary Float
+  hra         Float
+  allowances  Float // All other allowances
+  grossSalary Float
+
+  // Deductions
+  pfDeduction     Float
+  taxDeduction    Float
+  lwpDeduction    Float // Deduction for Leave Without Pay
+  otherDeductions Float // Total of PF, tax, etc.
+
+  netSalary Float
+
+  // Context
+  lwpDays Float // How many LWP days were found
+
+  // Links
+  runId    String
+  run      PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant     @relation(fields: [tenantId], references: [id])
+  userId   String
+  user     User       @relation(fields: [userId], references: [id])
+
+  @@index([runId])
+  @@index([userId])
+}
+
+// --- OKR & GOALS MODELS ---
+
+// The "big goal" or "destination"
+model Objective {
+  id          String  @id @default(cuid())
+  title       String // e.g., "Elevate Customer Success and Retention"
+  description String?
+  quarter     Int // e.g., 1 (for Q1)
+  year        Int // e.g., 2025
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Who owns this objective? (e.g., a team lead or manager)
+  ownerId String
+  owner   User   @relation("OwnedObjectives", fields: [ownerId], references: [id])
+
+  // Relation to all its Key Results
+  keyResults KeyResult[]
+
+  @@index([tenantId, year, quarter])
+}
+
+// The "measurable task" or "mile marker"
+model KeyResult {
+  id       String    @id @default(cuid())
+  title    String // e.g., "Reduce Quarterly Churn Rate (QCR) from 5% to 3%"
+  progress Int       @default(0) // 0-100%
+  status   OkrStatus @default(PLANNED)
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Who is responsible for this single KR?
+  ownerId String
+  owner   User   @relation("OwnedKeyResults", fields: [ownerId], references: [id])
+
+  // Link to the parent Objective
+  objectiveId String
+  objective   Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([objectiveId])
+}
+
+// --- PERFORMANCE REVIEW MODELS ---
+
+// The "Review Cycle" (e.g., "Q1 2025 Review") that the Admin creates
+model ReviewCycle {
+  id        String      @id @default(cuid())
+  name      String // e.g., "Q1 2025 Performance Review"
+  startDate DateTime
+  endDate   DateTime
+  status    CycleStatus @default(DRAFT)
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relations
+  selfAssessments SelfAssessment[]
+  peerFeedbacks   PeerFeedback[]
+
+  promotionRequests PromotionRequest[]
+
+  @@index([tenantId, status])
+}
+
+// An employee's self-assessment for a specific cycle
+model SelfAssessment {
+  id          String     @id @default(cuid())
+  status      TaskStatus @default(PENDING)
+  submittedAt DateTime?
+
+  // Answers to the questions
+  accomplishments String? // "What were your biggest accomplishments?"
+  challenges      String? // "What did you struggle with?"
+  goals           String? // "What do you want to learn next?"
+
+  // Links
+  cycleId  String
+  cycle    ReviewCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+
+  @@unique([cycleId, userId])
+}
+
+// A single piece of 360 feedback from one user to another
+model PeerFeedback {
+  id          String     @id @default(cuid())
+  status      TaskStatus @default(PENDING)
+  submittedAt DateTime?
+
+  // The feedback
+  rating   Float? // 1-5 score
+  positive String? // "What did this person do well?"
+  negative String? // "What could this person improve?"
+
+  // Links
+  cycleId  String
+  cycle    ReviewCycle @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+
+  // Who is giving the feedback?
+  giverId String
+  giver   User   @relation("FeedbackGiver", fields: [giverId], references: [id])
+
+  // Who is the feedback *about*?
+  receiverId String
+  receiver   User   @relation("FeedbackReceiver", fields: [receiverId], references: [id])
+
+  @@index([cycleId, receiverId])
+  @@index([cycleId, giverId])
+}
+
+model PromotionRequest {
+  id String @id @default(cuid())
+
+  // Current State (for historical record)
+  currentDesignation String
+  currentAnnualCTC   Float
+
+  // Proposed Changes
+  proposedDesignation      String
+  proposedAnnualCTC        Float
+  proposedIncrementPercent Float // e.g., 15.0
+  budgetImpact             Float // e.g., (proposedCTC - currentCTC)
+
+  // Workflow
+  status       PromotionStatus @default(PENDING_MANAGER)
+  managerNotes String? // Notes from the manager submitting
+  hrNotes      String? // Notes from HR approving
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Which employee is this about?
+  userId String
+  user   User   @relation("ReceivedBy", fields: [userId], references: [id])
+
+  // Which review cycle does this belong to?
+  cycleId String
+  cycle   ReviewCycle @relation(fields: [cycleId], references: [id])
+
+  // Who submitted this request (Manager)?
+  submittedById String
+  submittedBy   User   @relation("SubmittedBy", fields: [submittedById], references: [id])
+
+  // Who gave the final approval (HR)?
+  approvedById String?
+  approvedBy   User?   @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([tenantId, status])
+  @@index([userId])
+}
+
+// --- NEW: ANNOUNCEMENT MODELS ---
+
+model Announcement {
+  id        String             @id @default(cuid())
+  title     String
+  content   String? // The full content of the announcement
+  category  String // "HR", "IT", "Event", "Policy", etc.
+  status    AnnouncementStatus @default(DRAFT)
+  publishAt DateTime? // For scheduled posts
+  createdAt DateTime           @default(now())
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Who wrote this announcement?
+  authorId String
+  author   User   @relation("AuthoredBy", fields: [authorId], references: [id])
+
+  // Relation to track who has read it
+  readBy AnnouncementRead[]
+
+  @@index([tenantId, status, publishAt])
+}
+
+// "Read receipt" for announcements
+model AnnouncementRead {
+  id     String   @id @default(cuid())
+  readAt DateTime @default(now())
+
+  // Links
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // An employee can only read an announcement once
+  @@unique([announcementId, userId])
+}
+
+// --- NEW: SURVEYS & POLLS MODELS ---
+
+model Survey {
+  id             String       @id @default(cuid())
+  title          String
+  type           SurveyType   @default(SURVEY) // SURVEY, POLL, FEEDBACK
+  status         SurveyStatus @default(DRAFT)
+  dueDate        DateTime?
+  targetAudience String       @default("All Employees") // For display
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User   @relation("AuthoredBy", fields: [authorId], references: [id])
+
+  // Relations
+  questions SurveyQuestion[]
+  responses SurveyResponse[]
+
+  @@index([tenantId, status])
+}
+
+model SurveyQuestion {
+  id      String       @id @default(cuid())
+  text    String
+  type    QuestionType // e.g., MULTIPLE_CHOICE, TEXT, RATING_5
+  options String[] // For multiple choice
+  order   Int // Order of the question (1, 2, 3...)
+
+  // Links
+  surveyId String
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // Relation
+  answers SurveyAnswer[]
+
+  @@index([surveyId])
+}
+
+// A single "submission" of a survey by one employee
+model SurveyResponse {
+  id          String   @id @default(cuid())
+  submittedAt DateTime @default(now())
+
+  // Links
+  surveyId String
+  survey   Survey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  // Relation
+  answers SurveyAnswer[]
+
+  @@unique([surveyId, userId]) // An employee can only respond once
+}
+
+// An employee's answer to a single question
+model SurveyAnswer {
+  id String @id @default(cuid())
+
+  // The answer
+  textAnswer   String? // For TEXT type
+  numberAnswer Float? // For RATING_5 type
+  arrayAnswer  String[] // For MULTIPLE_CHOICE type
+
+  // Links
+  responseId String
+  response   SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  questionId String
+  question   SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  userId   String
+  user     User   @relation(fields: [userId], references: [id])
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([responseId, questionId])
+}
+
+// --- NEW: REWARDS & RECOGNITION MODELS ---
+
+// This stores the *types* of awards (e.g., "Team Player")
+model RecognitionBadge {
+  id     String @id @default(cuid())
+  name   String // e.g., "Team Player", "Innovation", "5 Year Milestone"
+  icon   String // e.g., "Handshake", "Lightbulb" (from lucide)
+  color  String // e.g., "bg-indigo-500"
+  points Int    @default(0) // Points awarded with this badge
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relation
+  recognitions Recognition[]
+
+  @@unique([tenantId, name])
+}
+
+// This is a record of a single recognition event
+model Recognition {
+  id        String   @id @default(cuid())
+  message   String // The "shout-out" message
+  createdAt DateTime @default(now())
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // The badge that was given
+  badgeId String
+  badge   RecognitionBadge @relation(fields: [badgeId], references: [id])
+
+  // Who gave the recognition?
+  senderId String
+  sender   User   @relation("GivenBy", fields: [senderId], references: [id])
+
+  // Who received the recognition?
+  receiverId String
+  receiver   User   @relation("ReceivedBy", fields: [receiverId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([receiverId])
+  @@index([senderId])
+}
+
+// --- POLICY & COMPLIANCE MODELS ---
+
+model Policy {
+  id          String   @id @default(cuid())
+  name        String // "Digital Employee Handbook"
+  version     String // "4.0"
+  category    String // "General", "IT", "Mandatory"
+  storagePath String // Path to the PDF in Supabase
+  lastUpdated DateTime @default(now())
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relations
+  acknowledgments PolicyAcknowledgment[]
+
+  @@index([tenantId])
+}
+
+model PolicyAcknowledgment {
+  id     String   @id @default(cuid())
+  readAt DateTime @default(now())
+
+  // Links
+  policyId String
+  policy   Policy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([policyId, userId])
+}
+
+model GrievanceCase {
+  id           String          @id @default(cuid())
+  caseNumber   String          @unique // e.g., "GRV-2025-001"
+  type         GrievanceType
+  status       GrievanceStatus @default(OPEN)
+  dateFiled    DateTime        @default(now())
+  dateResolved DateTime?
+  details      String
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Who filed this? (Can be HR)
+  filedById String
+  filedBy   User   @relation("FiledBy", fields: [filedById], references: [id])
+
+  // Who is this case about? (Optional)
+  aboutUserId String?
+  aboutUser   User?   @relation("AboutUser", fields: [aboutUserId], references: [id])
+
+  @@index([tenantId, status])
+}
+
+model TrainingModule {
+  id          String    @id @default(cuid())
+  name        String // "POSH Module 2025"
+  isMandatory Boolean   @default(false)
+  dueDate     DateTime?
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Relations
+  completions TrainingCompletion[]
+
+  @@index([tenantId])
+}
+
+model TrainingCompletion {
+  id          String   @id @default(cuid())
+  completedAt DateTime @default(now())
+
+  // Links
+  moduleId String
+  module   TrainingModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+
+  @@unique([moduleId, userId])
+}
+
+// --- EXIT WORKFLOW MODELS ---
+
+model ExitCase {
+  id               String     @id @default(cuid())
+  status           ExitStatus @default(ACTIVE)
+  resignationDate  DateTime
+  lastDay          DateTime
+  reasonForLeaving String?
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Employee who is leaving
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  // Admin who initiated the process
+  initiatedById String
+  initiatedBy   User   @relation("InitiatedBy", fields: [initiatedById], references: [id])
+
+  // Relations
+  clearanceTasks ClearanceTask[]
+
+  @@index([tenantId, status])
+  @@index([userId])
+}
+
+model ClearanceTask {
+  id         String              @id @default(cuid())
+  department ClearanceDepartment // IT, FINANCE, HR, MANAGER
+  status     ClearanceStatus     @default(PENDING)
+  notes      String?
+
+  // Links
+  exitCaseId String
+  exitCase   ExitCase @relation(fields: [exitCaseId], references: [id], onDelete: Cascade)
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  // Who approved this?
+  approvedById String?
+  approvedBy   User?   @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  @@unique([exitCaseId, department])
+}
+
+model CustomReport {
+  id            String   @id @default(cuid())
+  name          String // "Q4 Attrition Analysis"
+  dataDomain    String // "PAYROLL", "ATTENDANCE", "ATTRITION"
+  frequency     String // "Quarterly", "Monthly", "Ad-hoc"
+  exportOptions String[] // "PDF", "XLS", "CSV"
+  lastRun       DateTime @default(now())
+
+  // Links
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerId  String
+  owner    User   @relation(fields: [ownerId], references: [id])
+
+  @@index([tenantId])
+}
+
+model JobOpening {
+  id         String  @id @default(cuid())
+  title      String // "Senior Software Engineer"
+  department String
+  status     String // "OPEN", "CLOSED"
+  isCritical Boolean @default(false)
+
+  // Links
+  tenantId        String
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  hiringManagerId String
+  hiringManager   User   @relation(fields: [hiringManagerId], references: [id])
+
+  @@index([tenantId, status])
+}
+
+// --- ENUMS ---
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum SubStatus {
+  ACTIVE
+  PENDING
+  EXPIRED
+  CANCELLED
+}
+
+// Enum for Attendance Status
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LEAVE
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum OkrStatus {
+  PLANNED
+  ON_TRACK
+  AT_RISK
+  COMPLETED
+}
+
+enum CycleStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+}
+
+// NEW Enum for Promotions
+enum PromotionStatus {
+  DRAFT
+  PENDING_MANAGER
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+// NEW Enum for Announcements
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  SCHEDULED
+}
+
+// NEW Enums for Surveys
+enum SurveyType {
+  SURVEY
+  POLL
+  FEEDBACK
+}
+
+enum SurveyStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+  ANALYZING
+}
+
+enum QuestionType {
+  TEXT
+  RATING_5
+  MULTIPLE_CHOICE_SINGLE
+  MULTIPLE_CHOICE_MULTIPLE
+}
+
+enum GrievanceType {
+  GRIEVANCE
+  DISCIPLINARY
+  POSH
+}
+
+enum GrievanceStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum ExitStatus {
+  ACTIVE // Resignation logged, notice period active
+  PENDING_FNF // All clearances done, waiting for final payroll
+  COMPLETED // All done, F&F paid
+}
+
+enum ClearanceDepartment {
+  IT
+  FINANCE
+  HR
+  MANAGER
+}
+
+enum ClearanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
