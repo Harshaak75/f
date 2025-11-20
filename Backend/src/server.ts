@@ -31,7 +31,7 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'f-jet-eight.vercel.app';
 
 // ✅ Middlewares
 app.use(cors({
-  origin: [FRONTEND_ORIGIN, "f-jet-eight.vercel.app", "http://localhost:4000"],             // ❗ NOT "*"
+  origin: [FRONTEND_ORIGIN, "https://f-bf0y.onrender.com", "http://localhost:4000"],             // ❗ NOT "*"
   credentials: true,                   // allow sending cookies
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
