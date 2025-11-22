@@ -224,8 +224,8 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
     sameSite: "none",
     maxAge: 24 * 60 * 60 * 1000,
   });
-  // res.redirect(`http://localhost:8081/employee`);
-  res.redirect(`https://f-jet-eight.vercel.app/employee?token=${hrmJwt}`);
+  res.redirect(`http://localhost:8080/employee`);
+  // res.redirect(`https://f-jet-eight.vercel.app/employee`);
 });
 
 export default router;
