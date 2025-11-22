@@ -58,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         localStorage.setItem('user', JSON.stringify(userData));
       } catch (error) {
         // No valid cookie, user is logged out
+        localStorage.setItem("hi", "hi")
         setUser(null);
         localStorage.removeItem('user');
       } finally {
