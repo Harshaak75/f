@@ -118,7 +118,7 @@ router.post("/create/tenantApi", protect, async (req, res) => {
     if (
       !idpType ||
       !idpIssuerUrl ||
-      !idpClientId ||
+      !idpClientId || 
       !idpClientSecret ||
       !tenantId
     ) {
@@ -224,7 +224,7 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
   // res.redirect(`http://localhost:8081/employee`);
-  res.redirect("http://localhost:8082/employee");
+  res.redirect("https://f-jet-eight.vercel.app/employee");
 });
 
 export default router;
