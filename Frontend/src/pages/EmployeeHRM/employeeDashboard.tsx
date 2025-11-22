@@ -199,6 +199,7 @@ export default function EmployeeDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
+    console.log("Token from URL:", token, "params: ", params.toString());
 
     if (token) {
       localStorage.setItem("accessToken", token);
