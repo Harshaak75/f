@@ -27,6 +27,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<AuthUser>; // <-- 2. Updated login function
   logout: () => Promise<void>;
+  setUserFromStorage: (user: AuthUser) => void;
 }
 // --- End Types ---
 
@@ -40,6 +41,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const storedUser = localStorage.getItem('user');
     return storedUser ? JSON.parse(storedUser) : null;
   });
+  const setUserFromStorage = useCallback((userData: AuthUser) => {
+  setUser(userData);
+  localStorage.setItem("user", JSON.stringify(userData));
+}, []);
   
   const [isLoading, setIsLoading] = useState(true);
 
@@ -109,8 +114,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       isLoading,
       login,
       logout,
+      setUserFromStorage
     }),
-    [user, isLoading, login, logout]
+    [user, isLoading, login, logout, setUserFromStorage]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
