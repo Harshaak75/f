@@ -28,6 +28,7 @@ import {
   AnnouncementListItem,
   LatestPayslip,
 } from "../../utils/api/EmployeeApi/employee.dashbaord.api";
+import { jwtDecode } from "jwt-decode";
 
 // ------------------------------
 // Attendance Tracker Component
@@ -195,6 +196,29 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
 // ------------------------------
 export default function EmployeeDashboard() {
   const { toast } = useToast();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+
+    if (token) {
+      localStorage.setItem("accessToken", token);
+
+      const decoded: any = jwtDecode(token);
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          id: decoded.userId,
+          role: decoded.role,
+          name: decoded.name || "Employee",
+        })
+      );
+
+      // Clean URL
+      window.history.replaceState({}, document.title, "/employee");
+    }
+  }, []);
+
   const employeeStr = localStorage.getItem("user");
   const employee = employeeStr ? JSON.parse(employeeStr) : null;
   const employeeName = employee?.name || "Employee";
