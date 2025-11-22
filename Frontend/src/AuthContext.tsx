@@ -53,6 +53,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const checkAuthStatus = async () => {
       try {
         // 3. Use the authService to check the cookie
+        console.log("Checking auth status...");
         const userData = await authService.checkAuthStatus();
         setUser(userData);
         localStorage.setItem('user', JSON.stringify(userData));
