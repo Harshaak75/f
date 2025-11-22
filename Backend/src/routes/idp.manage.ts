@@ -211,6 +211,7 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
       tenantId: tenant.id,
       email,
       name: given_name || email,
+      role: "EMPLOYEE"
     },
     process.env.JWT_SECRET!,
     { expiresIn: "1d" }
