@@ -48,6 +48,7 @@ declare global {
 export const protect = (req: Request, res: Response, next: NextFunction) => {
   // 1. Get the token from the cookie
   const token = req.cookies.token;
+  console.log("protect middleware -> token:", token);
 
   if (!token) {
     return res.status(401).json({ message: 'Unauthorized: No token provided' });

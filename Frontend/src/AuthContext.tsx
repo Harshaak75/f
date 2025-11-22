@@ -27,7 +27,6 @@ interface AuthContextType {
   isLoading: boolean;
   login: (credentials: LoginCredentials) => Promise<AuthUser>; // <-- 2. Updated login function
   logout: () => Promise<void>;
-  setUserFromStorage: (user: AuthUser) => void;
 }
 // --- End Types ---
 
@@ -41,10 +40,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const storedUser = localStorage.getItem('user');
     return storedUser ? JSON.parse(storedUser) : null;
   });
-  const setUserFromStorage = useCallback((userData: AuthUser) => {
-  setUser(userData);
-  localStorage.setItem("user", JSON.stringify(userData));
-}, []);
   
   const [isLoading, setIsLoading] = useState(true);
 
@@ -53,13 +48,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const checkAuthStatus = async () => {
       try {
         // 3. Use the authService to check the cookie
-        console.log("Checking auth status...");
         const userData = await authService.checkAuthStatus();
         setUser(userData);
         localStorage.setItem('user', JSON.stringify(userData));
       } catch (error) {
         // No valid cookie, user is logged out
-        localStorage.setItem("hi", "hi")
         setUser(null);
         localStorage.removeItem('user');
       } finally {
@@ -116,9 +109,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       isLoading,
       login,
       logout,
-      setUserFromStorage
     }),
-    [user, isLoading, login, logout, setUserFromStorage]
+    [user, isLoading, login, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
