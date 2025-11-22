@@ -6,6 +6,7 @@ import { jwtDecode } from "jwt-decode";
 /** Gate: requires any authenticated user */
 export function RequireAuth() {
   const { user, isLoading, setUserFromStorage } = useAuth();
+  console.log("RequireAuth -> user:", user);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
@@ -37,6 +38,7 @@ export function RequireAuth() {
 /** Gate: requires a specific role; redirects to the user's home if wrong role */
 export function RequireRole({ role }: { role: "ADMIN" | "EMPLOYEE" }) {
   const { user } = useAuth();
+  console.log("RequireRole -> user:", user);
   if (!user) return <Navigate to="/login" replace />;
   if (user.role !== role) {
     return <Navigate to={user.role === "ADMIN" ? "/admin" : "/employee"} replace />;
