@@ -220,8 +220,8 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
   // ✅ Store HRM JWT in secure cookie
   res.cookie("token", hrmJwt, {
     httpOnly: true,
-    secure: true, // set true in production (HTTPS)
-    sameSite: "none",
+    secure: false, // set true in production (HTTPS)
+    sameSite: "lax",
     maxAge: 24 * 60 * 60 * 1000,
   });
   res.redirect(`http://localhost:8080/employee`);
