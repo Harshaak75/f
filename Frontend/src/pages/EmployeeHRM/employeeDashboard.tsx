@@ -198,7 +198,7 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
 // ------------------------------
 export default function EmployeeDashboard() {
   const { toast } = useToast();
-
+  console.log("hiiiiiii")
   const employeeStr = localStorage.getItem("user");
   const employee = employeeStr ? JSON.parse(employeeStr) : null;
   const employeeName = employee?.name || "Employee";
