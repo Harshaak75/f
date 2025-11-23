@@ -1,4 +1,4 @@
-# Dotspeaks HRM
+# Dotspeaks HRMs
 
 A modern, enterprise-grade HR/CRM system built with React, TypeScript, and Tailwind CSS.
 
