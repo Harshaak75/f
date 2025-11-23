@@ -47,6 +47,8 @@ declare global {
 
 export const protect = (req: Request, res: Response, next: NextFunction) => {
   // 1. Get the token from the cookie
+  const {par_token} = req.params;
+  console.log("token: ", par_token)
   const token = req.cookies.token;
   console.log("protect middleware -> token:", token);
 
