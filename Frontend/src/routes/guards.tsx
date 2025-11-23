@@ -3,6 +3,7 @@ import { useAuth } from "../AuthContext";
 
 /** Gate: requires any authenticated user */
 export function RequireAuth() {
+  console.log("RequireAuth check");
   const { user, isLoading } = useAuth();
   if (isLoading) return <div className="p-6">Loading…</div>;
   if (!user) return <Navigate to="/login" replace />;
