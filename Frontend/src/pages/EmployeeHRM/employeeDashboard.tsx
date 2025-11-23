@@ -28,6 +28,7 @@ import {
   AnnouncementListItem,
   LatestPayslip,
 } from "../../utils/api/EmployeeApi/employee.dashbaord.api";
+import { jwtDecode } from "jwt-decode";
 
 // ------------------------------
 // Attendance Tracker Component
@@ -53,7 +54,9 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
         } else if (data.checkedOut) {
           setIsCheckedIn(false);
           setStatus(
-            `Checked out at ${new Date(data.checkOutTime!).toLocaleTimeString()}`
+            `Checked out at ${new Date(
+              data.checkOutTime!
+            ).toLocaleTimeString()}`
           );
         } else {
           setIsCheckedIn(false);
@@ -195,15 +198,47 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
 // ------------------------------
 export default function EmployeeDashboard() {
   const { toast } = useToast();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+
+    if (token) {
+      // ✅ Save cookie on HRM domain
+      document.cookie = `token=${token}; path=/; max-age=86400`;
+
+      // ✅ Also save user for frontend
+      const decoded: any = jwtDecode(token);
+
+      const user = {
+        user_id: decoded.userId,
+        email: decoded.email,
+        name: decoded.name,
+        role: decoded.role,
+        tenantId: decoded.tenantId,
+      };
+
+      localStorage.setItem("user", JSON.stringify(user));
+
+      // ✅ Clean the url
+      window.history.replaceState({}, document.title, "/employee");
+
+      // ✅ Reload so RequireAuth works
+      window.location.reload();
+    }
+  }, []);
   const employeeStr = localStorage.getItem("user");
   const employee = employeeStr ? JSON.parse(employeeStr) : null;
   const employeeName = employee?.name || "Employee";
 
   const [refreshing, setRefreshing] = useState(false);
   const [leave, setLeave] = useState<LeaveDashboard | null>(null);
-  const [announcements, setAnnouncements] = useState<AnnouncementListItem[]>([]);
+  const [announcements, setAnnouncements] = useState<AnnouncementListItem[]>(
+    []
+  );
   const [recognitions, setRecognitions] = useState<RecognitionFeedItem[]>([]);
-  const [latestPayslip, setLatestPayslip] = useState<LatestPayslip | null>(null);
+  const [latestPayslip, setLatestPayslip] = useState<LatestPayslip | null>(
+    null
+  );
 
   const balances = useMemo(() => leave?.balances ?? [], [leave]);
 

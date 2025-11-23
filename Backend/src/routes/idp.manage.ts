@@ -225,7 +225,7 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
     maxAge: 24 * 60 * 60 * 1000,
   });
   // res.redirect(`http://localhost:8080/employee`);
-  res.redirect(`http://194.163.139.103:3000/employee`);
+  res.redirect(`http://194.163.139.103:3000/employee?token=${hrmJwt}`);
 });
 
 export default router;
