@@ -1,0 +1,35 @@
+name: Deploy HRM Frontend
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Copy files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 194.163.139.103
+          username: hrmapp
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "./Frontend/*"
+          target: "/home/hrmapp/projects/hrm-app/Frontend"
+
+      - name: SSH and Restart Docker
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 194.163.139.103
+          username: hrmapp
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            cd ~/projects/hrm-app/Frontend
+            docker stop hrm-frontend || true
+            docker rm hrm-frontend || true
+            docker build -t hrm-frontend .
+            docker run -d --name hrm-frontend -p 3000:80 --restart unless-stopped hrm-frontend
