@@ -149,11 +149,16 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
   const { tenantCode } = req.params;
   const { token }: any = req.query; // or Authorization header
 
+  console.log("👉 tenantCode:", tenantCode);
+  console.log("👉 token present:", !!token);
+
   const tenant = await prisma.tenant.findUnique({
     where: { tenantCode },
     include: { tenant_api_table: true },
   });
+  console.log("👉 tenant:", tenant);
   const apiConfig = tenant?.tenant_api_table[0];
+  console.log("👉 apiConfig:", apiConfig);
   if (!apiConfig) return res.status(400).send("IdP not configured");
 
   // Verify Keycloak token using JWKS endpoint
@@ -162,10 +167,12 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
   });
 
   const decodedHeader: any = jwt.decode(token, { complete: true });
+  console.log("👉 decodedHeader:", decodedHeader);
   const key = await client.getSigningKey(decodedHeader.header.kid);
   const publicKey = key.getPublicKey();
 
   const verified = jwt.verify(token, publicKey);
+  console.log("✅ verified:", verified);
 
   const { sub, email, given_name } = verified as any;
 
