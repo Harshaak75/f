@@ -3,6 +3,8 @@ name: Deploy HRM Frontend
 on:
   push:
     branches: [ "main" ]
+  paths:
+      - "Frontend/**"
 
 jobs:
   deploy:

@@ -198,34 +198,7 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
 // ------------------------------
 export default function EmployeeDashboard() {
   const { toast } = useToast();
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
 
-    if (token) {
-      // ✅ Save cookie on HRM domain
-      document.cookie = `token=${token}; path=/; max-age=86400`;
-
-      // ✅ Also save user for frontend
-      const decoded: any = jwtDecode(token);
-
-      const user = {
-        user_id: decoded.userId,
-        email: decoded.email,
-        name: decoded.name,
-        role: decoded.role,
-        tenantId: decoded.tenantId,
-      };
-
-      localStorage.setItem("user", JSON.stringify(user));
-
-      // ✅ Clean the url
-      window.history.replaceState({}, document.title, "/employee");
-
-      // ✅ Reload so RequireAuth works
-      window.location.reload();
-    }
-  }, []);
   const employeeStr = localStorage.getItem("user");
   const employee = employeeStr ? JSON.parse(employeeStr) : null;
   const employeeName = employee?.name || "Employee";
