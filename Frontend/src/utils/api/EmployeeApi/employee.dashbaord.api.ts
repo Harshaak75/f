@@ -82,21 +82,17 @@ const downloadBlob = (blob: Blob, fallbackFilename: string, contentDisposition?:
 // ---------- API Calls ----------
 export const employeeService = {
   // ATTENDANCE (Tenant API expects geolocation + timestamps)
-  checkIn: async (employeeId: string, latitude: number, longitude: number, checkInTime: string) => {
+  checkIn: async (employeeId: string, checkInTime: string) => {
     const { data } = await apiClient.post(`/incoming/attendance/check-in`, {
       employeeId,
-      latitude,
-      longitude,
       checkInTime,
     });
     return data as { message: string; recordId: string };
   },
 
-  checkOut: async (employeeId: string, latitude: number, longitude: number, checkOutTime: string) => {
+  checkOut: async (employeeId: string, checkOutTime: string) => {
     const { data } = await apiClient.post(`/incoming/attendance/check-out`, {
       employeeId,
-      latitude,
-      longitude,
       checkOutTime,
     });
     return data as { message: string; record: AttendanceRecord };

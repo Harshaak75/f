@@ -17,9 +17,9 @@ router.post(
   async (req: TenantRequest, res) => {
     // We get the tenantId from the middleware (which got it from the API key)
     const { tenantId, userId } = req.user!;
-    const { employeeId, latitude, longitude, checkInTime } = req.body;
+    const { employeeId, checkInTime } = req.body;
 
-    if (!employeeId || !latitude || !longitude || !checkInTime) {
+    if (!employeeId || !checkInTime) {
       return res.status(400).json({
         message:
           "Missing required fields: employeeId, latitude, longitude, checkInTime",
@@ -93,9 +93,9 @@ router.post(
   async (req: TenantRequest, res) => {
     // We get the tenantId from the middleware (which got it from the API key)
     const { tenantId, userId } = req.user!;
-    const { employeeId, latitude, longitude, checkOutTime } = req.body;
+    const { employeeId, checkOutTime } = req.body;
 
-    if (!employeeId || !checkOutTime || !latitude || !longitude) {
+    if (!employeeId || !checkOutTime) {
       return res.status(400).json({
         message:
           "Missing required fields: employeeId, latitude, longitude, checkOutTime",
@@ -178,7 +178,6 @@ router.post(
   }
 );
 
-
 router.get("/status/today", protect, async (req, res) => {
   const { userId, tenantId } = req.user!;
   const today = new Date();
@@ -212,6 +211,5 @@ router.get("/status/today", protect, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch attendance status" });
   }
 });
-
 
 export default router;

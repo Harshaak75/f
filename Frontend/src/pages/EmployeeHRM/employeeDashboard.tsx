@@ -88,9 +88,9 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
     try {
       setLoading("IN");
       setStatus("Getting your location...");
-      const { lat, lng } = await withGeo();
+      // const { lat, lng } = await withGeo();
       const now = new Date().toISOString();
-      await employeeService.checkIn(employeeId, lat, lng, now);
+      await employeeService.checkIn(employeeId, now);
       setIsCheckedIn(true);
       setStatus(`Checked in at ${new Date().toLocaleTimeString()}`);
       toast({
@@ -112,9 +112,9 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
   const handleCheckOut = async () => {
     try {
       setLoading("OUT");
-      const { lat, lng } = await withGeo();
+      // const { lat, lng } = await withGeo();
       const now = new Date().toISOString();
-      await employeeService.checkOut(employeeId, lat, lng, now);
+      await employeeService.checkOut(employeeId, now);
       setIsCheckedIn(false);
       setStatus(`Checked out at ${new Date().toLocaleTimeString()}`);
       toast({
@@ -198,7 +198,7 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
 // ------------------------------
 export default function EmployeeDashboard() {
   const { toast } = useToast();
-  console.log("hiiiiiii")
+  console.log("hiiiiiii");
   const employeeStr = localStorage.getItem("user");
   const employee = employeeStr ? JSON.parse(employeeStr) : null;
   const employeeName = employee?.name || "Employee";
