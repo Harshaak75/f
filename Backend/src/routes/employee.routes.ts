@@ -9,6 +9,7 @@ import multer from "multer";
 import { supabase } from "../utils/Client";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
+import { createKeycloakUser } from "../utils/CreateKeycloakUser";
 
 const router = express.Router();
 
@@ -32,7 +33,9 @@ const BUCKET_NAME = "PersonalData";
 router.post("/create-onboarding", protect, async (req, res) => {
   const { tenantId, role } = req.user!;
   if (role !== Role.ADMIN) {
-    return res.status(403).json({ message: "Forbidden: Only admins can create employees." });
+    return res
+      .status(403)
+      .json({ message: "Forbidden: Only admins can create employees." });
   }
 
   const {
@@ -48,17 +51,26 @@ router.post("/create-onboarding", protect, async (req, res) => {
     emergencyContactName,
     emergencyContactPhone,
     designation,
-    joiningDate,   // "YYYY-MM-DD"
+    joiningDate, // "YYYY-MM-DD"
     employeeType,
-    dateOfBirth,   // "YYYY-MM-DD"
+    dateOfBirth, // "YYYY-MM-DD"
   } = req.body;
 
   if (
-    !email || !name || !password ||
-    !firstName || !lastName || !phone ||
-    !designation || !joiningDate || !employeeType || !dateOfBirth
+    !email ||
+    !name ||
+    !password ||
+    !firstName ||
+    !lastName ||
+    !phone ||
+    !designation ||
+    !joiningDate ||
+    !employeeType ||
+    !dateOfBirth
   ) {
-    return res.status(400).json({ message: "Missing required fields for new employee." });
+    return res
+      .status(400)
+      .json({ message: "Missing required fields for new employee." });
   }
 
   // Normalize date-only strings to IST midnight to avoid TZ shifts
@@ -75,7 +87,10 @@ router.post("/create-onboarding", protect, async (req, res) => {
       if (existingUser) {
         // If user is in a different tenant, this is a true conflict
         if (existingUser.tenantId !== tenantId) {
-          throw Object.assign(new Error("User with this email belongs to another tenant."), { code: "DIFF_TENANT" });
+          throw Object.assign(
+            new Error("User with this email belongs to another tenant."),
+            { code: "DIFF_TENANT" }
+          );
         }
 
         // Find or create profile for this user in this tenant
@@ -187,13 +202,14 @@ router.post("/create-onboarding", protect, async (req, res) => {
     }
     if (error.code === "P2002") {
       // Unique constraint (shouldn’t hit anymore in same-tenant path)
-      return res.status(409).json({ message: "Conflict: A user with this email already exists." });
+      return res
+        .status(409)
+        .json({ message: "Conflict: A user with this email already exists." });
     }
     console.error("create-onboarding failed:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
-
 
 /**
  * --- UPDATED WITH MANUAL UPSERT ---
@@ -401,6 +417,34 @@ router.post("/:profileId/offer", protect, async (req, res) => {
       },
       update: offerData,
       create: offerData,
+    });
+
+    // call the keyclock to create the employee
+
+    const keycloakUserId = await createKeycloakUser({
+      email: profile.personalEmail || "",
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      designation: profile.designation,
+    });
+
+    await prisma.externalIdentity.upsert({
+      where: {
+        email: profile.personalEmail || "",
+      },
+      update: {
+        provider: "keycloak",
+        subject: keycloakUserId.userId,
+        tenantId: tenantId,
+        email: profile.personalEmail || "",
+      },
+      create: {
+        userId: userId,
+        provider: "keycloak",
+        subject: keycloakUserId.userId,
+        tenantId: tenantId,
+        email: profile.personalEmail || "",
+      },
     });
 
     res.status(201).json({
@@ -771,7 +815,7 @@ router.get("/logs", protect, async (req, res) => {
 router.get("/getLeave", protect, async (req, res) => {
   const { userId, tenantId, role } = req.user!;
 
-  // This route is for employees 
+  // This route is for employees
 
   // note: can only applied for employee
 
