@@ -426,6 +426,7 @@ router.post("/:profileId/offer", protect, async (req, res) => {
       firstName: profile.firstName,
       lastName: profile.lastName,
       designation: profile.designation,
+      tenantId: tenantId,
     });
 
     await prisma.externalIdentity.upsert({
@@ -434,14 +435,14 @@ router.post("/:profileId/offer", protect, async (req, res) => {
       },
       update: {
         provider: "keycloak",
-        subject: keycloakUserId.userId,
+        subject: keycloakUserId.keycloakUserId,
         tenantId: tenantId,
         email: profile.personalEmail || "",
       },
       create: {
         userId: userId,
         provider: "keycloak",
-        subject: keycloakUserId.userId,
+        subject: keycloakUserId.keycloakUserId,
         tenantId: tenantId,
         email: profile.personalEmail || "",
       },

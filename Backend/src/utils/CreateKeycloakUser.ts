@@ -1,50 +1,73 @@
 import axios from "axios";
-import env from "dotenv";
-env.config();
-
-const KEYCLOAK_BASE_URL = process.env.KEYCLOAK_BASE_URL!;
-const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM!;
-const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID!;
-const KEYCLOAK_CLIENT_SECRET = process.env.KEYCLOAK_CLIENT_SECRET!;
+import prisma from "../prisma/client";
 
 /* =========================
-✅ GET ADMIN TOKEN
+   UTILITY: Extract base + realm from issuerUrl
+   Example issuer: http://168.119.xx.xx:8090/realms/dotspeaks
 ========================= */
-export async function getKeycloakAdminToken(): Promise<string> {
-  const params = new URLSearchParams();
+function extractKeycloakInfo(issuerUrl: string) {
+  const parts = issuerUrl.split("/realms/");
+  const baseUrl = parts[0];     // http://host:8090
+  const realm = parts[1];        // dotspeaks
 
+  return { baseUrl, realm };
+}
+
+/* =========================
+✅ GET ADMIN TOKEN (from DB)
+========================= */
+export async function getKeycloakAdminToken(tenantId: string) {
+  const tenantApi = await prisma.tenant_api_table.findFirst({
+    where: { tenantId, idpType: "keycloak" },
+  });
+
+  if (!tenantApi?.idpTokenUrl || !tenantApi?.idpClientId || !tenantApi?.idpClientSecret) {
+    throw new Error("Keycloak config missing for this tenant");
+  }
+
+  const params = new URLSearchParams();
   params.append("grant_type", "client_credentials");
-  params.append("client_id", KEYCLOAK_CLIENT_ID);
-  params.append("client_secret", KEYCLOAK_CLIENT_SECRET);
+  params.append("client_id", tenantApi.idpClientId);
+  params.append("client_secret", tenantApi.idpClientSecret);
 
   const { data } = await axios.post(
-    `${KEYCLOAK_BASE_URL}/realms/master/protocol/openid-connect/token`,
+    tenantApi.idpTokenUrl,
     params,
     { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
   );
 
-  return data.access_token;
+  return { accessToken: data.access_token, tenantApi };
 }
 
 /* =========================
-✅ CREATE USER + SET ROLE
+✅ CREATE USER + ROLE + EMAIL
 ========================= */
 export async function createKeycloakUser({
   email,
   firstName,
   lastName,
   designation,
+  tenantId
 }: {
   email: string;
   firstName: string;
   lastName: string;
   designation: string;
+  tenantId: string;
 }) {
-  const token = await getKeycloakAdminToken();
+  const { accessToken, tenantApi } = await getKeycloakAdminToken(tenantId);
 
-  /* --- 1. Create User --- */
+  if (!tenantApi.idpIssuerUrl) {
+    throw new Error("Issuer URL missing in tenant_api_table");
+  }
+
+  const { baseUrl, realm } = extractKeycloakInfo(tenantApi.idpIssuerUrl);
+
+  /* -------------------------
+     1. CREATE USER
+  --------------------------*/
   const createRes = await axios.post(
-    `${KEYCLOAK_BASE_URL}/admin/realms/${KEYCLOAK_REALM}/users`,
+    `${baseUrl}/admin/realms/${realm}/users`,
     {
       username: email,
       email,
@@ -53,48 +76,74 @@ export async function createKeycloakUser({
       enabled: true,
       emailVerified: false,
     },
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
   const location = createRes.headers["location"];
-  const userId = location.split("/").pop();
+  const keycloakUserId = location.split("/").pop();
 
-  /* --- 2. Get or Create Role (designation) --- */
+  if (!keycloakUserId) {
+    throw new Error("Failed to receive Keycloak userId");
+  }
+
+  /* -------------------------
+     2. GET / CREATE ROLE
+  --------------------------*/
   const { data: roles } = await axios.get(
-    `${KEYCLOAK_BASE_URL}/admin/realms/${KEYCLOAK_REALM}/roles`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    `${baseUrl}/admin/realms/${realm}/roles`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
   let role = roles.find((r: any) => r.name === designation);
 
   if (!role) {
     await axios.post(
-      `${KEYCLOAK_BASE_URL}/admin/realms/${KEYCLOAK_REALM}/roles`,
+      `${baseUrl}/admin/realms/${realm}/roles`,
       { name: designation },
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
     const { data: newRole } = await axios.get(
-      `${KEYCLOAK_BASE_URL}/admin/realms/${KEYCLOAK_REALM}/roles/${designation}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      `${baseUrl}/admin/realms/${realm}/roles/${designation}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
     role = newRole;
   }
 
-  /* --- 3. Assign Role to User --- */
+  /* -------------------------
+     3. ASSIGN ROLE
+  --------------------------*/
   await axios.post(
-    `${KEYCLOAK_BASE_URL}/admin/realms/${KEYCLOAK_REALM}/users/${userId}/role-mappings/realm`,
+    `${baseUrl}/admin/realms/${realm}/users/${keycloakUserId}/role-mappings/realm`,
     [{ id: role.id, name: role.name }],
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
-  /* --- 4. Send Update-Password Email --- */
+  /* -------------------------
+     4. SEND RESET PASSWORD EMAIL
+  --------------------------*/
   await axios.put(
-    `${KEYCLOAK_BASE_URL}/admin/realms/${KEYCLOAK_REALM}/users/${userId}/execute-actions-email`,
+    `${baseUrl}/admin/realms/${realm}/users/${keycloakUserId}/execute-actions-email`,
     ["UPDATE_PASSWORD"],
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
-  return { userId, role: designation };
+  /* -------------------------
+     5. SAVE IN ExternalIdentity
+  --------------------------*/
+  await prisma.externalIdentity.create({
+    data: {
+      provider: "keycloak",
+      subject: keycloakUserId,
+      email,
+      tenantId,
+    },
+  });
+
+  return {
+    keycloakUserId,
+    role: designation,
+    realm,
+  };
 }
