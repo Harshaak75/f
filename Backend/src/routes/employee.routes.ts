@@ -421,32 +421,32 @@ router.post("/:profileId/offer", protect, async (req, res) => {
 
     // call the keyclock to create the employee
 
-    const keycloakUserId = await createKeycloakUser({
-      email: profile.personalEmail || "",
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      designation: profile.designation,
-      tenantId: tenantId,
-    });
+    // const keycloakUserId = await createKeycloakUser({
+    //   email: profile.personalEmail || "",
+    //   firstName: profile.firstName,
+    //   lastName: profile.lastName,
+    //   designation: profile.designation,
+    //   tenantId: tenantId,
+    // });
 
-    await prisma.externalIdentity.upsert({
-      where: {
-        email: profile.personalEmail || "",
-      },
-      update: {
-        provider: "keycloak",
-        subject: keycloakUserId.keycloakUserId,
-        tenantId: tenantId,
-        email: profile.personalEmail || "",
-      },
-      create: {
-        userId: userId,
-        provider: "keycloak",
-        subject: keycloakUserId.keycloakUserId,
-        tenantId: tenantId,
-        email: profile.personalEmail || "",
-      },
-    });
+    // await prisma.externalIdentity.upsert({
+    //   where: {
+    //     email: profile.personalEmail || "",
+    //   },
+    //   update: {
+    //     provider: "keycloak",
+    //     subject: keycloakUserId.keycloakUserId,
+    //     tenantId: tenantId,
+    //     email: profile.personalEmail || "",
+    //   },
+    //   create: {
+    //     userId: userId,
+    //     provider: "keycloak",
+    //     subject: keycloakUserId.keycloakUserId,
+    //     tenantId: tenantId,
+    //     email: profile.personalEmail || "",
+    //   },
+    // });
 
     res.status(201).json({
       message: "Offer details saved successfully.",
