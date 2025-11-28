@@ -228,11 +228,11 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
   res.cookie("token", hrmJwt, {
     httpOnly: true,
     secure: true, // set true in production (HTTPS)
-    sameSite: "lax",
+    sameSite: "none",
     maxAge: 24 * 60 * 60 * 1000,
   });
   // res.redirect(`http://localhost:8080/employee?token=${hrmJwt}`);
-  res.redirect(`http://194.163.139.103:3000/employee?token=${hrmJwt}`);
+  res.redirect(`https://hrms.dotspeaks.com/employee?token=${hrmJwt}`);
 });
 
 export default router;
