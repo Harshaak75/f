@@ -30,9 +30,9 @@ import {
 } from "../../utils/api/EmployeeApi/employee.dashbaord.api";
 import { jwtDecode } from "jwt-decode";
 
-// ------------------------------
-// Attendance Tracker Component
-// ------------------------------
+// ----------------------------------------------------
+// ⚡ Attendance Tracker Component (Fully Responsive)
+// ----------------------------------------------------
 const AttendanceTracker: React.FC<{ employeeId: string }> = ({
   employeeId,
 }) => {
@@ -41,7 +41,6 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
   const [status, setStatus] = useState("Loading attendance status...");
   const [loading, setLoading] = useState<"IN" | "OUT" | null>(null);
 
-  // ✅ Fetch today's attendance status
   useEffect(() => {
     const fetchStatus = async () => {
       try {
@@ -63,32 +62,15 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
           setStatus("You are checked out.");
         }
       } catch (err) {
-        console.error("Failed to fetch attendance status:", err);
         setStatus("Could not load attendance status.");
       }
     };
     fetchStatus();
   }, []);
 
-  // Geolocation utility
-  const withGeo = async () => {
-    return new Promise<{ lat: number; lng: number }>((resolve, reject) => {
-      if (!navigator.geolocation)
-        return reject(new Error("Geolocation not available"));
-      navigator.geolocation.getCurrentPosition(
-        (pos) =>
-          resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => reject(err),
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    });
-  };
-
   const handleCheckIn = async () => {
     try {
       setLoading("IN");
-      setStatus("Getting your location...");
-      // const { lat, lng } = await withGeo();
       const now = new Date().toISOString();
       await employeeService.checkIn(employeeId, now);
       setIsCheckedIn(true);
@@ -98,12 +80,12 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
         description: "Your attendance has been marked.",
       });
     } catch (e: any) {
+      setStatus("Check-in failed.");
       toast({
         title: "Check-in failed",
         description: e?.message ?? "Please try again.",
         variant: "destructive",
       });
-      setStatus("Check-in failed.");
     } finally {
       setLoading(null);
     }
@@ -112,7 +94,6 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
   const handleCheckOut = async () => {
     try {
       setLoading("OUT");
-      // const { lat, lng } = await withGeo();
       const now = new Date().toISOString();
       await employeeService.checkOut(employeeId, now);
       setIsCheckedIn(false);
@@ -133,8 +114,8 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
   };
 
   return (
-    <Card className="p-4 bg-gray-50 shadow-sm rounded-xl">
-      <div className="flex items-center justify-between">
+    <Card className="p-4 sm:p-5 bg-gray-50 shadow-sm rounded-xl">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div
             className={`h-10 w-10 rounded-full flex items-center justify-center ${
@@ -153,10 +134,12 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
           </div>
         </div>
 
+        {/* Responsive Check In / Out Button */}
         {isCheckedIn ? (
           <Button
             variant="destructive"
             onClick={handleCheckOut}
+            className="w-full sm:w-auto"
             disabled={loading !== null}
           >
             {loading === "OUT" ? (
@@ -165,14 +148,13 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
               </span>
             ) : (
               <>
-                <LogOut className="mr-2 h-4 w-4" />
-                Check Out
+                <LogOut className="mr-2 h-4 w-4" /> Check Out
               </>
             )}
           </Button>
         ) : (
           <Button
-            className="bg-green-600 hover:bg-green-700"
+            className="bg-green-600 hover:bg-green-700 w-full sm:w-auto"
             onClick={handleCheckIn}
             disabled={loading !== null}
           >
@@ -182,8 +164,7 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
               </span>
             ) : (
               <>
-                <LogIn className="mr-2 h-4 w-4" />
-                Check In
+                <LogIn className="mr-2 h-4 w-4" /> Check In
               </>
             )}
           </Button>
@@ -193,12 +174,11 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
   );
 };
 
-// ------------------------------
-// Main Employee Dashboard
-// ------------------------------
+// ----------------------------------------------------
+// ⚡ Main Employee Dashboard (Fully Responsive)
+// ----------------------------------------------------
 export default function EmployeeDashboard() {
   const { toast } = useToast();
-  console.log("hiiiiiii");
   const employeeStr = localStorage.getItem("user");
   const employee = employeeStr ? JSON.parse(employeeStr) : null;
   const employeeName = employee?.name || "Employee";
@@ -224,10 +204,12 @@ export default function EmployeeDashboard() {
         employeeService.getRecognitionFeed().catch(() => []),
         employeeService.getLatestPayslip().catch(() => null),
       ]);
+
       if (lv) setLeave(lv);
       setAnnouncements(anns ?? []);
       setRecognitions(recs ?? []);
       setLatestPayslip(pay);
+
       toast({ title: "Refreshed", description: "Dashboard data updated." });
     } catch (e: any) {
       toast({
@@ -258,16 +240,22 @@ export default function EmployeeDashboard() {
   };
 
   return (
-    <div className="p-10 space-y-6">
+    <div className="p-4 sm:p-6 lg:p-10 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
             Welcome back, {employeeName}!
           </h1>
           <p className="text-gray-500 mt-1">Here's your summary for today.</p>
         </div>
-        <Button variant="outline" onClick={fetchAll} disabled={refreshing}>
+
+        <Button
+          variant="outline"
+          onClick={fetchAll}
+          disabled={refreshing}
+          className="w-full sm:w-auto"
+        >
           {refreshing ? (
             <span className="flex items-center gap-2">
               <RefreshCw className="h-4 w-4 animate-spin" /> Refreshing...
@@ -280,28 +268,44 @@ export default function EmployeeDashboard() {
         </Button>
       </div>
 
-      {/* Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Section */}
-        <div className="lg:col-span-2 space-y-6">
+      {/* Responsive Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Left Section (spans 2 cols on large screen) */}
+        <div className="md:col-span-2 space-y-6">
           <AttendanceTracker employeeId={employee?.id || ""} />
 
           {/* Recognition Wall */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Recognition Wall</CardTitle>
-              <Button asChild>
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between w-full gap-3">
+              <CardTitle className="text-lg sm:text-xl">
+                Recognition Wall
+              </CardTitle>
+
+              {/* MOBILE BUTTON - only visible below 640px */}
+              <Button
+                asChild
+                size="sm"
+                className="block sm:hidden w-full bg-indigo-600 text-white py-2 rounded-md"
+              >
                 <Link to="/engagement/rewards">
-                  <MessageSquare className="mr-2 h-4 w-4" /> Give Recognition
+                  <MessageSquare className="inline h-4 w-4 mr-2" />
+                  Give Recognition
+                </Link>
+              </Button>
+
+              {/* DESKTOP BUTTON - only visible above 640px */}
+              <Button asChild size="sm" className="hidden sm:flex">
+                <Link to="/engagement/rewards">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Give Recognition
                 </Link>
               </Button>
             </CardHeader>
+
             <CardContent>
               <div className="space-y-4">
                 {recognitions.length === 0 ? (
-                  <div className="text-sm text-gray-500">
-                    No recognitions yet.
-                  </div>
+                  <p className="text-sm text-gray-500">No recognitions yet.</p>
                 ) : (
                   recognitions.map((rec) => (
                     <div
@@ -309,7 +313,7 @@ export default function EmployeeDashboard() {
                       className="p-4 border rounded-lg bg-white shadow-sm flex gap-3"
                     >
                       <Gift className="h-5 w-5 text-amber-500 mt-1" />
-                      <div>
+                      <div className="flex-1">
                         <Badge className="bg-amber-100 text-amber-800">
                           {rec.award}
                         </Badge>
@@ -317,7 +321,7 @@ export default function EmployeeDashboard() {
                           "{rec.message}"
                         </p>
                         <p className="text-xs text-gray-400 mt-1">
-                          &mdash; {rec.sender} → {rec.receiver}
+                          — {rec.sender} → {rec.receiver}
                         </p>
                       </div>
                     </div>
@@ -329,7 +333,7 @@ export default function EmployeeDashboard() {
         </div>
 
         {/* Right Section */}
-        <div className="lg:col-span-1 space-y-6">
+        <div className="space-y-6">
           {/* My Leave */}
           <Card>
             <CardHeader className="flex justify-between">
@@ -369,21 +373,24 @@ export default function EmployeeDashboard() {
             </CardHeader>
             <CardContent>
               {latestPayslip ? (
-                <>
-                  <div className="flex justify-between p-4 bg-green-50 rounded-lg">
-                    <div>
-                      <p className="text-sm text-gray-500">
-                        {latestPayslip.month} {latestPayslip.year}
-                      </p>
-                      <p className="text-2xl font-bold text-green-700">
-                        ₹{latestPayslip.netSalary.toLocaleString("en-IN")}
-                      </p>
-                    </div>
-                    <Button variant="outline" onClick={handleDownloadPayslip}>
-                      <Download className="mr-2 h-4 w-4" /> Download
-                    </Button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-green-50 rounded-lg gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500">
+                      {latestPayslip.month} {latestPayslip.year}
+                    </p>
+                    <p className="text-2xl font-bold text-green-700">
+                      ₹{latestPayslip.netSalary.toLocaleString("en-IN")}
+                    </p>
                   </div>
-                </>
+
+                  <Button
+                    variant="outline"
+                    onClick={handleDownloadPayslip}
+                    className="w-full sm:w-auto"
+                  >
+                    <Download className="mr-2 h-4 w-4" /> Download
+                  </Button>
+                </div>
               ) : (
                 <p className="text-sm text-gray-500">No payslip found.</p>
               )}
@@ -396,15 +403,19 @@ export default function EmployeeDashboard() {
               <CardTitle>Announcements</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {announcements.length === 0 ? (
                   <p className="text-sm text-gray-500">No announcements yet.</p>
                 ) : (
                   announcements.map((a) => (
-                    <div key={a.id} className="flex items-start gap-3">
+                    <div
+                      key={a.id}
+                      className="flex flex-col sm:flex-row items-start gap-3"
+                    >
                       <Badge className="bg-indigo-500 text-white mt-1">
                         {a.category}
                       </Badge>
+
                       <div className="flex-1">
                         <p className="text-sm text-gray-600">
                           <span className="font-semibold text-gray-800">
@@ -412,7 +423,9 @@ export default function EmployeeDashboard() {
                           </span>{" "}
                           <span className="text-gray-400">({a.date})</span>
                         </p>
+
                         <p className="text-sm text-gray-600">{a.snippet}</p>
+
                         {!a.isRead && (
                           <Button
                             variant="link"
