@@ -904,7 +904,6 @@ export default function ProfileManagement(): JSX.Element {
               )}
             </div>
           </TabsContent>
-
           {/* ---------------- DOCUMENTS ---------------- */}
           <TabsContent value="documents" className="mt-6">
             {/* ⛳ Hidden input OUTSIDE any conditional rendering issues */}
