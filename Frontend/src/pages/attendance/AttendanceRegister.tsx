@@ -100,103 +100,111 @@ export default function AttendanceRegister() {
   }, [employees]);
 
   // Compute per-employee summary for the selected day
-  const dailyRows: DailyRow[] = useMemo(() => {
-    if (!logs?.length) return [];
+const dailyRows: DailyRow[] = useMemo(() => {
+  if (!logs?.length) return [];
 
-    const dayStr = format(date, "yyyy-MM-dd"); // compare by day
-    // Group events by employeeId for the chosen day
-    const grouped = new Map<string, AttendanceLog[]>();
+  const dayStr = format(date, "yyyy-MM-dd");
 
-    for (const log of logs) {
-      // Only keep same day events
-      const ts = new Date(log.timestamp);
-      const tsStr = format(ts, "yyyy-MM-dd");
-      if (tsStr !== dayStr) continue;
+  // Group logs by employeeId
+  const grouped = new Map<string, AttendanceLog[]>();
 
-      const key = log.employeeId || "UNKNOWN";
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(log);
+  for (const log of logs) {
+    const ts = new Date(log.timestamp);
+    const tsStr = format(ts, "yyyy-MM-dd");
+    if (tsStr !== dayStr) continue;
+
+    const key = log.employeeId || "UNKNOWN";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(log);
+  }
+
+  // Include all employees (even those with no logs)
+  const publicEmployeeIds = new Set<string>();
+  employees.forEach((e) => {
+    if (e.employeeId) publicEmployeeIds.add(e.employeeId);
+  });
+  for (const k of grouped.keys()) publicEmployeeIds.add(k);
+
+  const rows: DailyRow[] = [];
+
+  for (const empCode of publicEmployeeIds) {
+    const evs: any = grouped.get(empCode) || [];
+
+    // 👉 Read backend authoritative status (MOST IMPORTANT)
+    const backendStatus = evs[0]?.dailyStatus || "ABSENT";
+
+    let status: DailyRow["status"];
+    if (backendStatus === "PRESENT") status = "Present";
+    else if (backendStatus === "HALF_DAY") status = "Half Day";
+    else if (backendStatus === "LEAVE") status = "On Leave";
+    else status = "Absent";
+
+    // --------------------------------------------------------------------------------
+    // Check-in & Check-out (just for DISPLAY, NOT for status calculation anymore)
+    // --------------------------------------------------------------------------------
+    const checkIns = evs
+      .filter((e: any) => e.action === "CHECK_IN")
+      .map((e: any) => new Date(e.timestamp));
+
+    const checkOuts = evs
+      .filter((e: any) => e.action === "CHECK_OUT")
+      .map((e: any) => new Date(e.timestamp));
+
+    let checkInStr: string | undefined;
+    let checkOutStr: string | undefined;
+    let workHours: number | undefined;
+
+    if (checkIns.length) {
+      const earliestIn = new Date(
+        Math.min(...checkIns.map((d: any) => d.getTime()))
+      );
+      checkInStr = format(earliestIn, "HH:mm");
     }
 
-    // Make a set of ALL employees we know (from employees list)
-    // If you want to also include employees with zero logs (show as Absent), do it from employees array
-    const publicEmployeeIds = new Set<string>();
-    employees.forEach((e) => {
-      if (e.employeeId) publicEmployeeIds.add(e.employeeId);
+    if (checkOuts.length) {
+      const latestOut = new Date(
+        Math.max(...checkOuts.map((d: any) => d.getTime()))
+      );
+      checkOutStr = format(latestOut, "HH:mm");
+    }
+
+    // Optional: Compute hours for UI display only
+    if (checkInStr && checkOutStr) {
+      const inT = new Date(`${dayStr}T${checkInStr}:00`);
+      const outT = new Date(`${dayStr}T${checkOutStr}:00`);
+      const diff =
+        (outT.getTime() - inT.getTime()) / (1000 * 60 * 60);
+      workHours = Math.round(diff * 10) / 10;
+    }
+
+    // --------------------------------------------------------------------------------
+    // Fill metadata
+    // --------------------------------------------------------------------------------
+    const meta = empByPublicId.get(empCode);
+    const fullName =
+      `${meta?.firstName ?? ""} ${meta?.lastName ?? ""}`.trim() ||
+      meta?.user?.name ||
+      evs[0]?.employeeName ||
+      "—";
+
+    rows.push({
+      profileId: meta?.id,
+      userId: meta?.userId,
+      employeeId: empCode,
+      name: fullName,
+      employeeType: meta?.employeeType ?? null,
+      designation: meta?.designation ?? null,
+      checkIn: checkInStr,
+      checkOut: checkOutStr,
+      workHours,
+      status, // 👉 Using backend status now
     });
-    // Also include those who appear only in logs (e.g., if employees endpoint is partial)
-    for (const k of grouped.keys()) publicEmployeeIds.add(k);
+  }
 
-    const rows: DailyRow[] = [];
+  rows.sort((a, b) => a.name.localeCompare(b.name));
+  return rows;
+}, [logs, employees, empByPublicId, date]);
 
-    for (const empCode of publicEmployeeIds) {
-      const evs = grouped.get(empCode) || [];
-      // Find earliest CHECK_IN and latest CHECK_OUT
-      const checkIns = evs
-        .filter((e) => e.action === "CHECK_IN")
-        .map((e) => new Date(e.timestamp));
-      const checkOuts = evs
-        .filter((e) => e.action === "CHECK_OUT")
-        .map((e) => new Date(e.timestamp));
-
-      let checkInStr: string | undefined;
-      let checkOutStr: string | undefined;
-      let workHours: number | undefined;
-      let status: DailyRow["status"] = "Absent";
-
-      if (checkIns.length) {
-        const earliestIn = new Date(
-          Math.min(...checkIns.map((d) => d.getTime()))
-        );
-        checkInStr = format(earliestIn, "HH:mm");
-      }
-      if (checkOuts.length) {
-        const latestOut = new Date(
-          Math.max(...checkOuts.map((d) => d.getTime()))
-        );
-        checkOutStr = format(latestOut, "HH:mm");
-      }
-      if (checkInStr && checkOutStr) {
-        // compute hours
-        const inT = new Date(`${dayStr}T${checkInStr}:00`);
-        const outT = new Date(`${dayStr}T${checkOutStr}:00`);
-        const diff = Math.max(
-          0,
-          (outT.getTime() - inT.getTime()) / (1000 * 60 * 60)
-        );
-        workHours = Math.round(diff * 10) / 10;
-        status = "Present";
-      } else if (checkInStr && !checkOutStr) {
-        status = "Half Day";
-      } else {
-        status = "Absent";
-      }
-
-      const meta = empByPublicId.get(empCode);
-      const fullName =
-        `${meta?.firstName ?? ""} ${meta?.lastName ?? ""}`.trim() ||
-        meta?.user?.name ||
-        evs[0]?.employeeName ||
-        "—";
-
-      rows.push({
-        profileId: meta?.id,
-        userId: meta?.userId,
-        employeeId: empCode,
-        name: fullName,
-        employeeType: meta?.employeeType ?? null,
-        designation: meta?.designation ?? null,
-        checkIn: checkInStr,
-        checkOut: checkOutStr,
-        workHours,
-        status,
-      });
-    }
-
-    // Sort by name
-    rows.sort((a, b) => a.name.localeCompare(b.name));
-    return rows;
-  }, [logs, employees, empByPublicId, date]);
 
   // Unique employee types for filter
   const employeeTypes = useMemo(() => {
