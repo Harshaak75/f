@@ -709,8 +709,106 @@ router.get("/id-card/:profileId", protect, async (req, res) => {
  * @desc    Get all attendance logs (check-ins/check-outs) for the admin's tenant.
  * @access  Private (Admin only)
  */
+// router.get("/logs", protect, async (req, res) => {
+//   // 1. Check Authorization
+//   const { tenantId, role } = req.user!;
+//   if (role !== Role.ADMIN) {
+//     return res
+//       .status(403)
+//       .json({ message: "Forbidden: Only admins can view company-wide logs." });
+//   }
+
+//   // 2. Get query params for filtering (optional)
+//   const { dateFrom, dateTo, type } = req.query;
+
+//   // TODO: Add robust date and type filtering logic here
+//   // For now, we fetch all logs.
+
+//   try {
+//     // 3. Fetch daily summary records from the database
+//     const dailyRecords = await prisma.attendanceRecord.findMany({
+//       where: {
+//         tenantId: tenantId,
+//       },
+//       include: {
+//         // We need to get the employee's name and ID from their profile
+//         user: {
+//           select: {
+//             employeeProfile: {
+//               select: {
+//                 firstName: true,
+//                 lastName: true,
+//                 employeeId: true, // The public-facing Employee ID
+//               },
+//             },
+//           },
+//         },
+//       },
+//       orderBy: {
+//         date: "desc", // Show the most recent dates first
+//       },
+//       take: 100, // Limit to 100 daily records for now
+//     });
+
+//     // 4. Transform the daily records into individual log events
+//     const formattedLogs: any[] = [];
+//     for (const record of dailyRecords) {
+//       const employeeId = record.user.employeeProfile?.employeeId || "N/A";
+//       const employeeName = `${record.user.employeeProfile?.firstName || ""} ${
+//         record.user.employeeProfile?.lastName || ""
+//       }`.trim();
+
+//       // Note: Your 'AttendanceRecord' model (designed for daily summaries)
+//       // doesn't store logType, location, or verification status.
+//       // We are hardcoding these values to match the frontend component's needs.
+//       // You may want to update your schema to store this info.
+
+//       // Create a "Check In" log event
+//       if (record.checkIn) {
+//         formattedLogs.push({
+//           id: `${record.id}-checkin`,
+//           employeeId: employeeId,
+//           employeeName: employeeName,
+//           timestamp: record.checkIn.toISOString(),
+//           type: "GEO", // TODO: Hardcoded as 'GEO'
+//           action: "CHECK_IN",
+//           location: "Office", // TODO: Hardcoded
+//           verified: true, // TODO: Hardcoded
+//         });
+//       }
+
+//       // Create a "Check Out" log event
+//       if (record.checkOut) {
+//         formattedLogs.push({
+//           id: `${record.id}-checkout`,
+//           employeeId: employeeId,
+//           employeeName: employeeName,
+//           timestamp: record.checkOut.toISOString(),
+//           type: "GEO", // TODO: Hardcoded as 'GEO'
+//           action: "CHECK_OUT",
+//           location: "Office", // TODO: Hardcoded
+//           verified: true, // TODO: Hardcoded
+//         });
+//       }
+//     }
+
+//     // Sort the combined list of events by timestamp
+//     formattedLogs.sort(
+//       (a, b) =>
+//         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+//     );
+
+//     // 5. Send the formatted logs
+//     res.status(200).json(formattedLogs);
+//   } catch (error) {
+//     console.error("Failed to fetch attendance logs:", error);
+//     res.status(500).json({ message: "Internal server error" });
+//   }
+// });
+
+
 router.get("/logs", protect, async (req, res) => {
-  // 1. Check Authorization
+  // 1. Authorization
   const { tenantId, role } = req.user!;
   if (role !== Role.ADMIN) {
     return res
@@ -718,93 +816,109 @@ router.get("/logs", protect, async (req, res) => {
       .json({ message: "Forbidden: Only admins can view company-wide logs." });
   }
 
-  // 2. Get query params for filtering (optional)
-  const { dateFrom, dateTo, type } = req.query;
-
-  // TODO: Add robust date and type filtering logic here
-  // For now, we fetch all logs.
+  // 2. Query params (can extend with dateFrom/dateTo/type later)
+  // const { dateFrom, dateTo, type } = req.query;
 
   try {
-    // 3. Fetch daily summary records from the database
+    // 3. Fetch attendance records WITH status and user profile
     const dailyRecords = await prisma.attendanceRecord.findMany({
-      where: {
-        tenantId: tenantId,
-      },
+      where: { tenantId },
       include: {
-        // We need to get the employee's name and ID from their profile
         user: {
           select: {
+            id: true,
             employeeProfile: {
               select: {
                 firstName: true,
                 lastName: true,
-                employeeId: true, // The public-facing Employee ID
+                employeeId: true,
               },
             },
           },
         },
       },
-      orderBy: {
-        date: "desc", // Show the most recent dates first
-      },
-      take: 100, // Limit to 100 daily records for now
+      orderBy: { date: "desc" },
+      take: 100,
     });
 
-    // 4. Transform the daily records into individual log events
+    // 4. Format into events but attach the authoritative daily status
     const formattedLogs: any[] = [];
     for (const record of dailyRecords) {
-      const employeeId = record.user.employeeProfile?.employeeId || "N/A";
-      const employeeName = `${record.user.employeeProfile?.firstName || ""} ${
-        record.user.employeeProfile?.lastName || ""
+      const employeeId =
+        record.user?.employeeProfile?.employeeId ?? "N/A";
+      const employeeName = `${record.user?.employeeProfile?.firstName ?? ""} ${
+        record.user?.employeeProfile?.lastName ?? ""
       }`.trim();
 
-      // Note: Your 'AttendanceRecord' model (designed for daily summaries)
-      // doesn't store logType, location, or verification status.
-      // We are hardcoding these values to match the frontend component's needs.
-      // You may want to update your schema to store this info.
+      // dailyStatus: the DB field that should be trusted by frontend
+      const dailyStatus = record.status ?? "UNKNOWN";
 
-      // Create a "Check In" log event
+      // Create a "Check In" event (if exists)
       if (record.checkIn) {
         formattedLogs.push({
           id: `${record.id}-checkin`,
-          employeeId: employeeId,
-          employeeName: employeeName,
+          attendanceId: record.id,
+          userId: record.user?.id ?? null,
+          employeeId,
+          employeeName,
           timestamp: record.checkIn.toISOString(),
-          type: "GEO", // TODO: Hardcoded as 'GEO'
           action: "CHECK_IN",
-          location: "Office", // TODO: Hardcoded
-          verified: true, // TODO: Hardcoded
+          type: "GEO", // keep for frontend, consider storing actual type in schema later
+          location: "Office",
+          verified: true,
+          hoursWorked: record.hoursWorked ?? null,
+          dailyStatus, // <-- important: authoritative status for the day
         });
       }
 
-      // Create a "Check Out" log event
+      // Create a "Check Out" event (if exists)
       if (record.checkOut) {
         formattedLogs.push({
           id: `${record.id}-checkout`,
-          employeeId: employeeId,
-          employeeName: employeeName,
+          attendanceId: record.id,
+          userId: record.user?.id ?? null,
+          employeeId,
+          employeeName,
           timestamp: record.checkOut.toISOString(),
-          type: "GEO", // TODO: Hardcoded as 'GEO'
           action: "CHECK_OUT",
-          location: "Office", // TODO: Hardcoded
-          verified: true, // TODO: Hardcoded
+          type: "GEO",
+          location: "Office",
+          verified: true,
+          hoursWorked: record.hoursWorked ?? null,
+          dailyStatus,
         });
       }
+
+      // Also push a summary event for the day (so UI can show final state at glance)
+      formattedLogs.push({
+        id: `${record.id}-summary`,
+        attendanceId: record.id,
+        userId: record.user?.id ?? null,
+        employeeId,
+        employeeName,
+        timestamp: (record.checkOut ?? record.checkIn ?? record.date).toISOString(),
+        action: "DAILY_SUMMARY",
+        type: "SYSTEM",
+        location: null,
+        verified: true,
+        hoursWorked: record.hoursWorked ?? null,
+        dailyStatus,
+      });
     }
 
-    // Sort the combined list of events by timestamp
+    // 5. Sort events by timestamp desc
     formattedLogs.sort(
-      (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
 
-    // 5. Send the formatted logs
+    // 6. Response
     res.status(200).json(formattedLogs);
   } catch (error) {
     console.error("Failed to fetch attendance logs:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });
+
 
 // leave management
 
