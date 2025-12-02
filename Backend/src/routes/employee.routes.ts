@@ -1354,4 +1354,288 @@ router.get("/run/:runId/export", protect, async (req, res) => {
   }
 });
 
+router.put("/profile/personal/:profileId", protect, async (req, res) => {
+  try {
+    const profileId = req.params.profileId;
+
+    const {
+      firstName,
+      lastName,
+      phone,
+      personalEmail,
+      emergencyContactName,
+      emergencyContactPhone,
+      dateOfBirth,
+    } = req.body;
+
+    const updated = await prisma.employeeProfile.update({
+      where: { id: profileId },
+      data: {
+        firstName,
+        lastName,
+        phone,
+        personalEmail,
+        emergencyContactName,
+        emergencyContactPhone,
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : undefined,
+      },
+      include: {
+        user: true,
+        tenant: true,
+      },
+    });
+
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // Log activity
+    await prisma.activityLog.create({
+      data: {
+        action: "PROFILE_UPDATED",
+        description: `Updated personal info for ${updated.firstName} ${updated.lastName}`,
+        tenantId: updated.tenantId,
+        performedById: req.user?.userId,
+        targetUserId: updated.userId,
+      },
+    });
+
+    res.json({ message: "Personal info updated", updated });
+  } catch (err) {
+    res.status(500).json({ message: "Update failed", error: err });
+  }
+});
+
+router.put("/profile/employment/:profileId", protect, async (req, res) => {
+  try {
+    const profileId = req.params.profileId;
+
+    const { designation, employeeType, joiningDate } = req.body;
+
+    const updated = await prisma.employeeProfile.update({
+      where: { id: profileId },
+      data: {
+        designation,
+        employeeType,
+        joiningDate: joiningDate ? new Date(joiningDate) : undefined,
+      },
+      include: {
+        user: true,
+        tenant: true,
+      },
+    });
+
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    await prisma.activityLog.create({
+      data: {
+        action: "EMPLOYMENT_UPDATED",
+        description: `Updated employment info for ${updated.firstName}`,
+        tenantId: updated.tenantId,
+        performedById: req.user?.userId,
+        targetUserId: updated.userId,
+      },
+    });
+
+    res.json({ message: "Employment info updated", updated });
+  } catch (err) {
+    res.status(500).json({ message: "Employment update failed", error: err });
+  }
+});
+
+router.post("/documents/:userId", protect, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const { documentType, fileName, storagePath } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    const uploaded = await prisma.documentUpload.create({
+      data: {
+        documentType,
+        fileName,
+        storagePath,
+        userId,
+        tenantId: user?.tenantId!,
+      },
+    });
+
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    await prisma.activityLog.create({
+      data: {
+        action: "DOCUMENT_UPLOADED",
+        description: `Uploaded document ${fileName}`,
+        tenantId: user?.tenantId!,
+        performedById: req.user.userId,
+        targetUserId: userId,
+      },
+    });
+
+    res.json({ message: "Document uploaded", uploaded });
+  } catch (err) {
+    res.status(500).json({ message: "Upload failed", error: err });
+  }
+});
+
+router.delete("/documents/:documentId", protect, async (req, res) => {
+  try {
+    const documentId = req.params.documentId;
+
+    const doc = await prisma.documentUpload.delete({
+      where: { id: documentId },
+    });
+
+    res.json({ message: "Document deleted", doc });
+  } catch (err) {
+    res.status(500).json({ message: "Delete failed", error: err });
+  }
+});
+
+// ASSETS
+
+router.post("/assets/:userId", protect, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const {
+      assetType,
+      brand,
+      model,
+      serialNumber,
+      esiNumber,
+      pfNumber,
+      insuranceNumber,
+      companyEmail,
+      idNumber,
+      simNumber,
+    } = req.body;
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+
+    const asset = await prisma.assignedAsset.create({
+      data: {
+        assetType,
+        brand,
+        model,
+        serialNumber,
+        esiNumber,
+        pfNumber,
+        insuranceNumber,
+        companyEmail,
+        idNumber,
+        simNumber,
+        userId,
+        tenantId: user?.tenantId!,
+      },
+    });
+
+    res.json({ message: "Asset added", asset });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to add asset", error: err });
+  }
+});
+
+router.put("/assets/:assetId", protect, async (req, res) => {
+  try {
+    const assetId = req.params.assetId;
+
+    const updated = await prisma.assignedAsset.update({
+      where: { id: assetId },
+      data: req.body,
+    });
+
+    res.json({ message: "Asset updated", updated });
+  } catch (err) {
+    res.status(500).json({ message: "Update failed", error: err });
+  }
+});
+
+router.delete("/assets/:assetId", protect, async (req, res) => {
+  try {
+    const assetId = req.params.assetId;
+
+    const asset = await prisma.assignedAsset.delete({
+      where: { id: assetId },
+    });
+
+    res.json({ message: "Asset removed", asset });
+  } catch (err) {
+    res.status(500).json({ message: "Delete failed", error: err });
+  }
+});
+
+// COMPENSATION / OFFER
+router.put("/offer/:userId", protect, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+
+    const {
+      annualCTC,
+      roleTitle,
+      basic,
+      hra,
+      da,
+      specialAllowance,
+      grossSalary,
+      pfDeduction,
+      tax,
+      netSalary,
+      isSigned,
+    } = req.body;
+
+    const existing = await prisma.offer.findUnique({ where: { userId } });
+
+    let updated;
+
+    if (existing) {
+      updated = await prisma.offer.update({
+        where: { userId },
+        data: {
+          annualCTC,
+          roleTitle,
+          basic,
+          hra,
+          da,
+          specialAllowance,
+          grossSalary,
+          pfDeduction,
+          tax,
+          netSalary,
+          isSigned,
+        },
+      });
+    } else {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+
+      updated = await prisma.offer.create({
+        data: {
+          userId,
+          tenantId: user?.tenantId!,
+          annualCTC,
+          roleTitle,
+          basic,
+          hra,
+          da,
+          specialAllowance,
+          grossSalary,
+          pfDeduction,
+          tax,
+          netSalary,
+          isSigned,
+        },
+      });
+    }
+
+    res.json({ message: "Offer updated", updated });
+  } catch (err) {
+    res.status(500).json({ message: "Offer update failed", error: err });
+  }
+});
+
 export default router;

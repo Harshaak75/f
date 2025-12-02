@@ -81,6 +81,7 @@ model Tenant {
   customReports      CustomReport[]
   jobOpenings        JobOpening[] // NEW
   externalIdentities ExternalIdentity[]
+  notifications      Notification[]
 }
 
 model User {
@@ -150,6 +151,7 @@ model User {
   customReports      CustomReport[]
   jobOpenings        JobOpening[] // NEW
   externalIdentities ExternalIdentity[]
+  notifications      Notification[]
 }
 
 model Subscription {
@@ -327,7 +329,7 @@ model ActivityLog {
 model tenant_api_table {
   id              String   @id @default(cuid())
   tenantId        String
-  apiKey          String?   @unique
+  apiKey          String?  @unique
   hashedKey       String?
   createdByUserId String?
   idpType         String? // e.g., "keycloak", "azure", "okta"
@@ -1099,4 +1101,24 @@ enum ClearanceStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+// notification
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  createdAt DateTime @default(now())
+  isRead    Boolean  @default(false)
+
+  // Link to the user who should receive it
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
 }

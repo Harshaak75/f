@@ -28,7 +28,7 @@ export default function LoginPage() {
 
       // Route by role
       if (user.role === "ADMIN") {
-        navigate("/admin", { replace: true });
+        navigate("/admin/dashboard", { replace: true });
       } else {
         navigate("/employee", { replace: true });
       }

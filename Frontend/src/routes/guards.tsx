@@ -14,8 +14,9 @@ export function RequireAuth() {
 export function RequireRole({ role }: { role: "ADMIN" | "EMPLOYEE" }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
+  console.log("RequireRole check for role:", role, "user role:", user.role);
   if (user.role !== role) {
-    return <Navigate to={user.role === "ADMIN" ? "/admin" : "/employee"} replace />;
+    return <Navigate to={user.role === "ADMIN" ? "/admin/dashboard" : "/employee"} replace />;
   }
   return <Outlet />;
 }

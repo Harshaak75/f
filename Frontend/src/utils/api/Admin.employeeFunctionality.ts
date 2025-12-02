@@ -267,4 +267,62 @@ export const EmployeeDirectoryList = {
     const list = await EmployeeDirectoryList.getAllEmployeeDetails();
     return list.find((p: any) => p.id === profileId) ?? null;
   },
+
+  updatePersonal: async (profileId: string, payload: any) => {
+    const { data } = await apiClient.put(
+      `/employee/profile/personal/${profileId}`,
+      payload
+    );
+    return data.updatedEmployee; // backend will return updated record
+  },
+
+  /** ------------------ NEW: Update EMPLOYMENT INFO ------------------ */
+  updateEmployment: async (profileId: string, payload: any) => {
+    const { data } = await apiClient.put(
+      `/employee/profile/employment/${profileId}`,
+      payload
+    );
+    return data.updatedEmployee;
+  },
+
+  updateOffer: async (userId: string, payload: any) => {
+    const { data } = await apiClient.put(`/employee/offer/${userId}`, payload);
+    return data.updated;
+  },
+
+  addDocument: async (userId: string, payload: any) => {
+    const { data } = await apiClient.post(
+      `/employee/documents/${userId}`,
+      payload
+    );
+    return data.uploaded;
+  },
+
+  deleteDocument: async (documentId: string) => {
+    const { data } = await apiClient.delete(
+      `/employee/documents/${documentId}`
+    );
+    return data;
+  },
+
+  addAsset: async (userId: string, payload: any) => {
+    const { data } = await apiClient.post(
+      `/employee/assets/${userId}`,
+      payload
+    );
+    return data.asset;
+  },
+
+  updateAsset: async (assetId: string, payload: any) => {
+    const { data } = await apiClient.put(
+      `/employee/assets/${assetId}`,
+      payload
+    );
+    return data.updated;
+  },
+
+  deleteAsset: async (assetId: string) => {
+    const { data } = await apiClient.delete(`/employee/assets/${assetId}`);
+    return data;
+  },
 };

@@ -258,4 +258,25 @@ router.post('/:requestId/reject', protect, async (req, res) => {
   }
 });
 
+
+// notifications for admin user
+router.get("/notifications/my", protect, async (req, res) => {
+  const notifications = await prisma.notification.findMany({
+    where: { userId: req.user?.userId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  res.json(notifications);
+});
+
+router.post("/notifications/mark-read", protect, async (req, res) => {
+  const { id } = req.body;
+  await prisma.notification.update({
+    where: { id },
+    data: { isRead: true },
+  });
+  res.json({ status: "ok" });
+});
+
+
 export default router;

@@ -162,7 +162,7 @@ const App = () => (
 
             {/* Default landing: redirect by role if logged in */}
             <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={<RequireAuth />}>
+            <Route path="/home/*" element={<RequireAuth />}>
               <Route index element={<RoleRedirect />} />
             </Route>
 
@@ -170,7 +170,7 @@ const App = () => (
             <Route element={<RequireAuth />}>
               <Route element={<RequireRole role="ADMIN" />}>
                 <Route path="/admin" element={<MainLayout />}>
-                  <Route index element={<Dashboard />} />
+                  <Route path="dashboard" element={<Dashboard />} />
                   <Route path="employees">
                     <Route path="directory" element={<EmployeeDirectory />} />
                     <Route path="onboarding" element={<EmployeeOnboarding />} />

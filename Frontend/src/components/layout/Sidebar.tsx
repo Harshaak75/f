@@ -290,7 +290,7 @@ interface MenuItem {
 
 /* ------------------------- Admin menu definition ------------------------- */
 const adminMenuItems: MenuItem[] = [
-  { title: "Dashboard", icon: LayoutDashboard, path: "/" },
+  { title: "Dashboard", icon: LayoutDashboard, path: "/admin/dashboard" },
   {
     title: "Employees",
     icon: Users,

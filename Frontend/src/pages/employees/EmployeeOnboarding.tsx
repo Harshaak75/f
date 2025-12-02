@@ -1,4 +1,5 @@
-import { useState } from "react";
+// EmployeeOnboarding.tsx
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import {
@@ -28,6 +29,16 @@ import {
   type AssetPayload,
 } from "../../utils/api/Admin.employeeFunctionality";
 import { useNavigate } from "react-router-dom";
+
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  basicInfoSchema,
+  documentsSchema,
+  offerSchema,
+  assetsSchema,
+} from "../../lib/onboardingSchemas";
+import { z } from "zod";
 
 const steps = [
   { id: 1, title: "Basic Info" },
@@ -101,67 +112,23 @@ export default function EmployeeOnboarding() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Step 1 state (CreateOnboardingPayload)
-  const [basic, setBasic] = useState<CreateOnboardingPayload>({
-    email: "",
-    name: "",
-    password: "", // required by your backend
-    firstName: "",
-    lastName: "",
-    personalEmail: "",
-    phone: "",
-    employeeId: "",
-    altPhone: "",
-    emergencyContactName: "",
-    emergencyContactPhone: "",
-    designation: "",
-    joiningDate: "", // yyyy-mm-dd
-    employeeType: "", // full-time | part-time | contractor
-    dateOfBirth: "", // yyyy-mm-dd
-  });
-
-  // Step 1 -> we need this for subsequent steps
+  // Parent-held state (synchronized by forms)
+  const [basic, setBasic] = useState<CreateOnboardingPayload>(initialBasic);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [docs, setDocs] = useState<DocsState>(initialDocs);
+  const [offer, setOffer] = useState<OfferPayload>(initialOffer);
+  const [assets, setAssets] = useState(() => ({ ...initialAssets }));
 
-  // Step 2 state (Document uploads)
-  const [docs, setDocs] = useState<DocsState>({
-    aadhar: [],
-    pan: [],
-    bank: [],
-    education: [],
-  });
+  // per-step validity state (controls Next button)
+  const [isStepValid, setIsStepValid] = useState(false);
 
-  // Step 3 state (Offer)
-  const [offer, setOffer] = useState<OfferPayload>({
-    roleTitle: "",
-    annualCTC: "",
-    basic: "",
-    hra: "",
-    da: "",
-    specialAllowance: "",
-    grossSalary: "",
-    pfDeduction: "",
-    tax: "",
-    netSalary: "",
-  });
+  // Reset step validity when step changes (forms will update it on mount)
+  useEffect(() => setIsStepValid(false), [currentStep]);
 
-  // Step 4 state (Assets)
-  const [assets, setAssets] = useState({
-    laptopBrand: "",
-    laptopModel: "",
-    serialNumber: "",
-    esiNumber: "",
-    pfNumber: "",
-    insuranceNumber: "",
-    companyEmail: "",
-    idNumber: "",
-    simNumber: "",
-  });
-
+  // handle finish (same as your original)
   const handleFinish = async () => {
     try {
       setLoading(true);
-      // (Optional) You could call a finalize endpoint here if you add one.
 
       toast({
         title: "Onboarding Complete",
@@ -176,19 +143,31 @@ export default function EmployeeOnboarding() {
       setProfileId(null);
       setCurrentStep(1);
 
-      // Go back to previous page (or navigate to a dashboard if you prefer)
       navigate(-1);
     } finally {
       setLoading(false);
     }
   };
 
+  // Enhanced handleNext: also prevents skipping when step invalid
   const handleNext = async () => {
+    // If UI shows disabled but user triggers this, enforce guard (Option C)
+    if (!isStepValid) {
+      toast({
+        title: "Fix errors before continuing",
+        description:
+          "Please resolve validation errors in the current step to continue.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setLoading(true);
 
       // STEP 1 -> Create Onboarding
       if (currentStep === 1) {
+        // additional runtime guard (mirrors Zod checks)
         if (
           !basic.firstName ||
           !basic.lastName ||
@@ -270,7 +249,7 @@ export default function EmployeeOnboarding() {
         });
       }
 
-      // STEP 4 -> Save Assets (send only filled ones)
+      // STEP 4 -> Save Assets
       if (currentStep === 4) {
         if (!profileId) throw new Error("Profile not created yet.");
 
@@ -412,43 +391,73 @@ export default function EmployeeOnboarding() {
             transition={{ duration: 0.3 }}
           >
             {currentStep === 1 && (
-              <BasicInfoForm basic={basic} setBasic={setBasic} />
+              <BasicInfoForm
+                basic={basic}
+                setBasic={setBasic}
+                onValidityChange={setIsStepValid}
+              />
             )}
             {currentStep === 2 && (
-              <DocumentsForm docs={docs} setDocs={setDocs} />
+              <DocumentsForm
+                docs={docs}
+                setDocs={setDocs}
+                onValidityChange={setIsStepValid}
+              />
             )}
             {currentStep === 3 && (
-              <OfferForm offer={offer} setOffer={setOffer} />
+              <OfferForm
+                offer={offer}
+                setOffer={setOffer}
+                onValidityChange={setIsStepValid}
+              />
             )}
             {currentStep === 4 && (
-              <AssetsForm assets={assets} setAssets={setAssets} />
+              <AssetsForm
+                assets={assets}
+                setAssets={setAssets}
+                onValidityChange={setIsStepValid}
+              />
             )}
-            {currentStep === 5 && <OrientationForm />}
+            {currentStep === 5 && <OrientationForm onValidityChange={setIsStepValid} />}
             {currentStep === 6 && <CompletionForm />}
           </motion.div>
 
-          <div className="flex justify-between mt-8">
-            <Button
-              variant="outline"
-              onClick={handlePrev}
-              disabled={currentStep === 1 || loading}
-            >
-              Previous
-            </Button>
-            <Button
-              onClick={currentStep === steps.length ? handleFinish : handleNext}
-              disabled={loading}
-              className={cn(loading && "opacity-70 cursor-not-allowed")}
-            >
-              {currentStep === steps.length
-                ? loading
-                  ? "Finishing..."
-                  : "Finish"
-                : loading
-                ? "Saving..."
-                : "Next"}
-            </Button>
-          </div>
+<div className="flex justify-between mt-8">
+  {/* Hide Previous on Step 6 */}
+  {currentStep !== 6 ? (
+    <Button
+      variant="outline"
+      onClick={handlePrev}
+      disabled={currentStep === 1 || loading}
+    >
+      Previous
+    </Button>
+  ) : (
+    <div /> /* keeps spacing balanced */
+  )}
+
+  <Button
+    onClick={currentStep === steps.length ? handleFinish : handleNext}
+    disabled={
+      currentStep === 6
+        ? loading // Step 6: only disable if loading
+        : !isStepValid || loading // Steps 1–5: validation controls disabled state
+    }
+    className={cn(
+      (loading || (currentStep !== 6 && !isStepValid)) &&
+        "opacity-70 cursor-not-allowed"
+    )}
+  >
+    {currentStep === steps.length
+      ? loading
+        ? "Finishing..."
+        : "Finish"
+      : loading
+      ? "Saving..."
+      : "Next"}
+  </Button>
+</div>
+
         </CardContent>
       </Card>
     </div>
@@ -456,15 +465,79 @@ export default function EmployeeOnboarding() {
 }
 
 /* -------------------- Step 1 -------------------- */
+
+
+/* -------------------- Step 1 -------------------- */
+
 function BasicInfoForm({
   basic,
   setBasic,
+  onValidityChange,
 }: {
   basic: CreateOnboardingPayload;
   setBasic: React.Dispatch<React.SetStateAction<CreateOnboardingPayload>>;
+  onValidityChange: (v: boolean) => void;
 }) {
-  const set = (k: keyof CreateOnboardingPayload) => (e: any) =>
-    setBasic((s) => ({ ...s, [k]: e.target ? e.target.value : e }));
+  // Create typed form from Zod schema
+  type BasicFormType = z.infer<typeof basicInfoSchema>;
+
+  const {
+    register,
+    control,
+    watch,
+    formState: { errors, isValid, isSubmitted },
+  } = useForm<BasicFormType>({
+    resolver: zodResolver(basicInfoSchema),
+    mode: "onChange",
+    defaultValues: {
+      firstName: basic.firstName,
+      lastName: basic.lastName,
+      name: basic.name,
+      email: basic.email,
+      password: basic.password,
+      personalEmail: basic.personalEmail || "",
+      phone: basic.phone,
+      altPhone: basic.altPhone || "",
+      emergencyContactName: basic.emergencyContactName || "",
+      emergencyContactPhone: basic.emergencyContactPhone || "",
+      designation: basic.designation,
+      employeeId: basic.employeeId || "",
+      joiningDate: basic.joiningDate,
+      dateOfBirth: basic.dateOfBirth,
+      employeeType: basic.employeeType as any,
+    },
+  });
+
+  // sync validity up
+  useEffect(() => {
+    onValidityChange(isValid);
+  }, [isValid, onValidityChange]);
+
+  // sync form values to parent
+  useEffect(() => {
+    const sub = watch((values) => {
+      setBasic((s) => ({
+        ...s,
+        firstName: values.firstName ?? "",
+        lastName: values.lastName ?? "",
+        name: values.name ?? "",
+        email: values.email ?? "",
+        password: values.password ?? "",
+        personalEmail: values.personalEmail ?? "",
+        phone: values.phone ?? "",
+        altPhone: values.altPhone ?? "",
+        emergencyContactName: values.emergencyContactName ?? "",
+        emergencyContactPhone: values.emergencyContactPhone ?? "",
+        designation: values.designation ?? "",
+        employeeId: values.employeeId ?? "",
+        joiningDate: values.joiningDate ?? "",
+        dateOfBirth: values.dateOfBirth ?? "",
+        employeeType: (values.employeeType as any) ?? "",
+      }));
+    });
+    return () => sub.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watch]);
 
   return (
     <div className="space-y-4">
@@ -472,77 +545,88 @@ function BasicInfoForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>First Name *</Label>
-          <Input
-            value={basic.firstName}
-            onChange={set("firstName")}
+          <input
+            {...register("firstName")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="Enter first name"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.firstName && (
+            <p className="text-sm text-red-500 mt-1">{errors.firstName.message}</p>
+          )}
         </div>
         <div>
           <Label>Last Name *</Label>
-          <Input
-            value={basic.lastName}
-            onChange={set("lastName")}
+          <input
+            {...register("lastName")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="Enter last name"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.lastName && (
+            <p className="text-sm text-red-500 mt-1">{errors.lastName.message}</p>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Display Name *</Label>
-          <Input
-            value={basic.name}
-            onChange={set("name")}
+          <input
+            {...register("name")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="e.g., John Doe"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.name && (
+            <p className="text-sm text-red-500 mt-1">{errors.name.message}</p>
+          )}
         </div>
         <div>
           <Label>Email *</Label>
-          <Input
+          <input
+            {...register("email")}
             type="email"
-            value={basic.email}
-            onChange={set("email")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="employee@dotspeaks.com"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.email && (
+            <p className="text-sm text-red-500 mt-1">{errors.email.message}</p>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Password *</Label>
-          <Input
+          <input
+            {...register("password")}
             type="password"
-            value={basic.password}
-            onChange={set("password")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="••••••••"
-            autoCapitalize="none"
             autoComplete="new-password"
-            autoCorrect="off"
           />
+          {errors.password && (
+            <p className="text-sm text-red-500 mt-1">{errors.password.message}</p>
+          )}
         </div>
         <div>
           <Label>Personal Email</Label>
-          <Input
-            value={basic.personalEmail || ""}
-            onChange={set("personalEmail")}
+          <input
+            {...register("personalEmail")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="john@gmail.com"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.personalEmail && (
+            <p className="text-sm text-red-500 mt-1">{errors.personalEmail.message}</p>
+          )}
         </div>
       </div>
 
@@ -550,25 +634,29 @@ function BasicInfoForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Phone *</Label>
-          <Input
-            value={basic.phone}
-            onChange={set("phone")}
+          <input
+            {...register("phone")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="+91 98765 43210"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.phone && (
+            <p className="text-sm text-red-500 mt-1">{errors.phone.message}</p>
+          )}
         </div>
         <div>
           <Label>Alternate Phone</Label>
-          <Input
-            value={basic.altPhone || ""}
-            onChange={set("altPhone")}
+          <input
+            {...register("altPhone")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="+91 90000 00000"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.altPhone && (
+            <p className="text-sm text-red-500 mt-1">{errors.altPhone.message}</p>
+          )}
         </div>
       </div>
 
@@ -576,25 +664,26 @@ function BasicInfoForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Emergency Contact Name</Label>
-          <Input
-            value={basic.emergencyContactName || ""}
-            onChange={set("emergencyContactName")}
+          <input
+            {...register("emergencyContactName")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="Guardian name"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
         </div>
         <div>
           <Label>Emergency Contact Phone</Label>
-          <Input
-            value={basic.emergencyContactPhone || ""}
-            onChange={set("emergencyContactPhone")}
+          <input
+            {...register("emergencyContactPhone")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="+91 9xxxx xxxxx"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.emergencyContactPhone && (
+            <p className="text-sm text-red-500 mt-1">{errors.emergencyContactPhone.message}</p>
+          )}
         </div>
       </div>
 
@@ -602,25 +691,29 @@ function BasicInfoForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Designation *</Label>
-          <Input
-            value={basic.designation}
-            onChange={set("designation")}
+          <input
+            {...register("designation")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="Software Engineer"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.designation && (
+            <p className="text-sm text-red-500 mt-1">{errors.designation.message}</p>
+          )}
         </div>
         <div>
           <Label>Employee ID</Label>
-          <Input
-            value={basic.employeeId || ""}
-            onChange={set("employeeId")}
+          <input
+            {...register("employeeId")}
+            className="input-base w-full p-1 border-none outline-gray-100"
             placeholder="EMP-001"
             autoCapitalize="none"
             autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.employeeId && (
+            <p className="text-sm text-red-500 mt-1">{errors.employeeId.message}</p>
+          )}
         </div>
       </div>
 
@@ -628,44 +721,50 @@ function BasicInfoForm({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Joining Date *</Label>
-          <Input
+          <input
+            {...register("joiningDate")}
             type="date"
-            value={basic.joiningDate}
-            onChange={set("joiningDate")}
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect="off"
+            className="input-base w-full p-1 border-none outline-gray-100"
           />
+          {errors.joiningDate && (
+            <p className="text-sm text-red-500 mt-1">{errors.joiningDate.message}</p>
+          )}
         </div>
         <div>
           <Label>Date of Birth *</Label>
-          <Input
+          <input
+            {...register("dateOfBirth")}
             type="date"
-            value={basic.dateOfBirth}
-            onChange={set("dateOfBirth")}
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect="off"
+            className="input-base w-full p-1 border-none outline-gray-100"
           />
+          {errors.dateOfBirth && (
+            <p className="text-sm text-red-500 mt-1">{errors.dateOfBirth.message}</p>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Employee Type *</Label>
-          <Select
-            value={basic.employeeType}
-            onValueChange={(v) => setBasic((s) => ({ ...s, employeeType: v }))}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="full-time">Full-time</SelectItem>
-              <SelectItem value="part-time">Part-time</SelectItem>
-              <SelectItem value="contractor">Contractor</SelectItem>
-            </SelectContent>
-          </Select>
+          <Controller
+            control={control}
+            name="employeeType"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full-time">Full-time</SelectItem>
+                  <SelectItem value="part-time">Part-time</SelectItem>
+                  <SelectItem value="contractor">Contractor</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.employeeType && (
+            <p className="text-sm text-red-500 mt-1">{errors.employeeType.message}</p>
+          )}
         </div>
       </div>
     </div>
@@ -673,27 +772,67 @@ function BasicInfoForm({
 }
 
 /* -------------------- Step 2 -------------------- */
+
 function DocumentsForm({
   docs,
   setDocs,
+  onValidityChange,
 }: {
   docs: DocsState;
   setDocs: React.Dispatch<React.SetStateAction<DocsState>>;
+  onValidityChange: (v: boolean) => void;
 }) {
+  type DocsFormType = z.infer<typeof documentsSchema>;
+
+  // React Hook Form with Zod
+  const {
+    setValue,
+    formState: { errors, isValid },
+  } = useForm<DocsFormType>({
+    resolver: zodResolver(documentsSchema),
+    mode: "onChange",
+    defaultValues: {
+      aadhar: docs.aadhar,
+      pan: docs.pan,
+      bank: docs.bank,
+      education: docs.education,
+    },
+  });
+
+  // Sync validation to parent
+  useEffect(() => {
+    onValidityChange(isValid);
+  }, [isValid, onValidityChange]);
+
+  // When docs change (add/remove), update RHF values
+  useEffect(() => {
+    setValue("aadhar", docs.aadhar as any, { shouldValidate: true });
+    setValue("pan", docs.pan as any, { shouldValidate: true });
+    setValue("bank", docs.bank as any, { shouldValidate: true });
+    setValue("education", docs.education as any, { shouldValidate: true });
+  }, [docs, setValue]);
+
+  // Add files
   const onPick =
-    (key: keyof DocsState) => (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files || []);
-      setDocs((s) => ({ ...s, [key]: [...(s[key] || []), ...files] }));
+    (key: keyof DocsState) =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []);
+      const updated = [...(docs[key] || []), ...files];
+      setDocs((s) => ({ ...s, [key]: updated }));
+      setValue(key as any, updated as any, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
     };
 
+  // Remove one file
   const removeOne = (key: keyof DocsState, index: number) => () => {
-    setDocs((s) => {
-      const copy = [...s[key]];
-      copy.splice(index, 1);
-      return { ...s, [key]: copy };
-    });
+    const updated = docs[key].filter((_, i) => i !== index);
+    setDocs((s) => ({ ...s, [key]: updated }));
+    setValue(key as any, updated as any, { shouldValidate: true });
   };
 
+  // Reusable picker UI (your same old design)
   const renderPicker = (
     label: string,
     key: keyof DocsState,
@@ -701,13 +840,24 @@ function DocumentsForm({
   ) => (
     <div className="border border-dashed border-border rounded-lg p-4 space-y-2">
       <Label className="font-medium">{label}</Label>
+
+      {/* File Input */}
       <Input type="file" multiple accept={accept} onChange={onPick(key)} />
-      {docs[key]?.length ? (
-        <div className="text-xs text-muted-foreground">
+
+      {/* Error Message */}
+      {errors[key] && (
+        <p className="text-sm text-red-500 mt-1">
+          {(errors as any)[key]?.message}
+        </p>
+      )}
+
+      {/* Selected Files List */}
+      {docs[key]?.length > 0 && (
+        <div className="text-xs text-muted-foreground mt-1 space-y-1">
           {docs[key].map((f, idx) => (
             <div
               key={`${f.name}-${idx}`}
-              className="flex items-center justify-between py-1"
+              className="flex items-center justify-between"
             >
               <span className="truncate mr-2">{f.name}</span>
               <button
@@ -720,7 +870,7 @@ function DocumentsForm({
             </div>
           ))}
         </div>
-      ) : null}
+      )}
     </div>
   );
 
@@ -730,6 +880,7 @@ function DocumentsForm({
         Upload required documents (PDF/JPG/PNG). You can add multiple files per
         category.
       </p>
+
       <div className="space-y-4">
         {renderPicker("Aadhar Card", "aadhar")}
         {renderPicker("PAN Card", "pan")}
@@ -740,144 +891,208 @@ function DocumentsForm({
   );
 }
 
+
 /* -------------------- Step 3 -------------------- */
 function OfferForm({
   offer,
   setOffer,
+  onValidityChange,
 }: {
   offer: OfferPayload;
   setOffer: React.Dispatch<React.SetStateAction<OfferPayload>>;
+  onValidityChange: (v: boolean) => void;
 }) {
-  const set = (k: keyof OfferPayload) => (e: any) =>
-    setOffer((s) => ({ ...s, [k]: e.target.value }));
+  type OfferFormType = z.infer<typeof offerSchema>;
+
+  const {
+    register,
+    watch,
+    setValue,
+    formState: { errors, isValid },
+  } = useForm<OfferFormType>({
+    resolver: zodResolver(offerSchema),
+    mode: "onChange",
+    defaultValues: {
+      roleTitle: offer.roleTitle,
+      annualCTC: String(offer.annualCTC),
+      basic: String(offer.basic),
+      hra: String(offer.hra),
+      da: String(offer.da),
+      specialAllowance: String(offer.specialAllowance),
+      grossSalary: String(offer.grossSalary),
+      pfDeduction: String(offer.pfDeduction),
+      tax: String(offer.tax),
+      netSalary: String(offer.netSalary),
+    },
+  });
+
+  useEffect(() => {
+    onValidityChange(isValid);
+  }, [isValid, onValidityChange]);
+
+  // Sync form values to parent
+  useEffect(() => {
+    const sub = watch((values) => {
+      setOffer((s) => ({
+        ...s,
+        ...values,
+      }));
+    });
+    return () => sub.unsubscribe();
+  }, [watch, setOffer]);
+
+  /** Ensure numbers only (removes arrows + enforces digits) */
+  const numericProps = (field: keyof OfferFormType) => ({
+    ...register(field),
+    type: "text",
+    inputMode: "numeric" as const,
+    pattern: "[0-9]*",
+    onChange: (e: any) => {
+      const cleaned = e.target.value.replace(/\D/g, ""); // keep digits only
+      setValue(field, cleaned, { shouldValidate: true });
+    },
+  });
 
   return (
     <div className="space-y-4">
+
+      {/* Row 1 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label>Role Title *</Label>
-          <Input
-            value={offer.roleTitle as any}
-            onChange={set("roleTitle")}
+          <input
+            {...register("roleTitle")}
+            className="input-base mt-1 w-full p-1 border-none outline-gray-100"
             placeholder="Senior Software Engineer"
           />
+          {errors.roleTitle && (
+            <p className="text-sm text-red-500 mt-1">{errors.roleTitle.message}</p>
+          )}
         </div>
+
         <div>
           <Label>Annual CTC (₹) *</Label>
-          <Input
-            type="number"
-            value={offer.annualCTC as any}
-            onChange={set("annualCTC")}
+          <input
+            {...numericProps("annualCTC")}
+            className="input-base mt-1 w-full p-1 border-none outline-gray-100"
             placeholder="1200000"
           />
+          {errors.annualCTC && (
+            <p className="text-sm text-red-500 mt-1">{errors.annualCTC.message}</p>
+          )}
         </div>
       </div>
 
+      {/* Breakdown Header */}
       <div className="space-y-4 pt-4 border-t">
         <h3 className="text-lg font-medium">Monthly Salary Breakdown (₹)</h3>
+
+        {/* Salary Breakdown Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>Basic Salary *</Label>
-            <Input
-              type="number"
-              value={offer.basic as any}
-              onChange={set("basic")}
+            <input
+              {...numericProps("basic")}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
               placeholder="50000"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
             />
+            {errors.basic && (
+              <p className="text-sm text-red-500 mt-1">{errors.basic.message}</p>
+            )}
           </div>
+
           <div>
             <Label>HRA *</Label>
-            <Input
-              type="number"
-              value={offer.hra as any}
-              onChange={set("hra")}
+            <input
+              {...numericProps("hra")}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
               placeholder="20000"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
             />
+            {errors.hra && (
+              <p className="text-sm text-red-500 mt-1">{errors.hra.message}</p>
+            )}
           </div>
+
           <div>
             <Label>DA</Label>
-            <Input
-              type="number"
-              value={offer.da as any}
-              onChange={set("da")}
+            <input
+              {...numericProps("da")}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
               placeholder="0"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
             />
           </div>
+
           <div>
             <Label>Special Allowance *</Label>
-            <Input
-              type="number"
-              value={offer.specialAllowance as any}
-              onChange={set("specialAllowance")}
+            <input
+              {...numericProps("specialAllowance")}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
               placeholder="10000"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
             />
+            {errors.specialAllowance && (
+              <p className="text-sm text-red-500 mt-1">
+                {errors.specialAllowance.message}
+              </p>
+            )}
           </div>
         </div>
 
+        {/* Gross Salary */}
         <div>
           <Label>Gross Salary (Monthly) *</Label>
-          <Input
-            type="number"
-            value={offer.grossSalary as any}
-            onChange={set("grossSalary")}
+          <input
+            {...numericProps("grossSalary")}
+            className="input-base mt-1 w-full p-1 border-none outline-gray-100"
             placeholder="80000"
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.grossSalary && (
+            <p className="text-sm text-red-500 mt-1">{errors.grossSalary.message}</p>
+          )}
         </div>
 
+        {/* Deduction Header */}
         <h4 className="text-md font-medium pt-2">Monthly Deductions (₹)</h4>
+
+        {/* Deduction Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>PF Deduction *</Label>
-            <Input
-              type="number"
-              value={offer.pfDeduction as any}
-              onChange={set("pfDeduction")}
+            <input
+              {...numericProps("pfDeduction")}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
               placeholder="1800"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
             />
+            {errors.pfDeduction && (
+              <p className="text-sm text-red-500 mt-1">
+                {errors.pfDeduction.message}
+              </p>
+            )}
           </div>
+
           <div>
             <Label>Tax (TDS) *</Label>
-            <Input
-              type="number"
-              value={offer.tax as any}
-              onChange={set("tax")}
+            <input
+              {...numericProps("tax")}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
               placeholder="5000"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
             />
+            {errors.tax && (
+              <p className="text-sm text-red-500 mt-1">{errors.tax.message}</p>
+            )}
           </div>
         </div>
 
+        {/* Net Salary */}
         <div>
           <Label>Net Salary (Monthly) *</Label>
-          <Input
-            type="number"
-            value={offer.netSalary as any}
-            onChange={set("netSalary")}
+          <input
+            {...numericProps("netSalary")}
+            className="input-base mt-1 w-full p-1 border-none outline-gray-100"
             placeholder="73200"
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect="off"
           />
+          {errors.netSalary && (
+            <p className="text-sm text-red-500 mt-1">{errors.netSalary.message}</p>
+          )}
         </div>
       </div>
     </div>
@@ -885,9 +1100,11 @@ function OfferForm({
 }
 
 /* -------------------- Step 4 -------------------- */
+
 function AssetsForm({
   assets,
   setAssets,
+  onValidityChange,
 }: {
   assets: {
     laptopBrand: string;
@@ -913,119 +1130,107 @@ function AssetsForm({
       simNumber: string;
     }>
   >;
+  onValidityChange: (v: boolean) => void;
 }) {
-  const set = (k: keyof typeof assets) => (e: any) =>
+  type AssetsFormType = z.infer<typeof assetsSchema>;
+
+  const { register, watch, formState: { errors, isValid } } = useForm<AssetsFormType>({
+    resolver: zodResolver(assetsSchema),
+    mode: "onChange",
+    defaultValues: {
+      laptopBrand: assets.laptopBrand,
+      laptopModel: assets.laptopModel,
+      serialNumber: assets.serialNumber,
+      esiNumber: assets.esiNumber,
+      pfNumber: assets.pfNumber,
+      insuranceNumber: assets.insuranceNumber,
+      companyEmail: assets.companyEmail,
+      idNumber: assets.idNumber,
+      simNumber: assets.simNumber,
+    },
+  });
+
+  useEffect(() => {
+    onValidityChange(isValid);
+  }, [isValid, onValidityChange]);
+
+  useEffect(() => {
+    const sub = watch((values) => {
+      setAssets((s) => ({
+        ...s,
+        laptopBrand: values.laptopBrand ?? "",
+        laptopModel: values.laptopModel ?? "",
+        serialNumber: values.serialNumber ?? "",
+        esiNumber: values.esiNumber ?? "",
+        pfNumber: values.pfNumber ?? "",
+        insuranceNumber: values.insuranceNumber ?? "",
+        companyEmail: values.companyEmail ?? "",
+        idNumber: values.idNumber ?? "",
+        simNumber: values.simNumber ?? "",
+      }));
+    });
+    return () => sub.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watch]);
+
+  const setField = (k: keyof typeof assets) => (e: any) =>
     setAssets((s) => ({ ...s, [k]: e.target.value }));
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Assign company assets to the new employee
-      </p>
+      <p className="text-sm text-muted-foreground">Assign company assets to the new employee</p>
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>Laptop Brand</Label>
-            <Input
-              value={assets.laptopBrand}
-              onChange={set("laptopBrand")}
-              placeholder="e.g., Dell"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("laptopBrand")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., Dell" />
           </div>
           <div>
             <Label>Laptop Model</Label>
-            <Input
-              value={assets.laptopModel}
-              onChange={set("laptopModel")}
-              placeholder="e.g., XPS 15"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("laptopModel")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., XPS 15" />
           </div>
         </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>ESI Number *</Label>
-            <Input
-              value={assets.esiNumber}
-              onChange={set("esiNumber")}
-              placeholder=""
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("esiNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+            {errors.esiNumber && <p className="text-sm text-red-500 mt-1">{errors.esiNumber.message}</p>}
           </div>
           <div>
             <Label>PF Number *</Label>
-            <Input
-              value={assets.pfNumber}
-              onChange={set("pfNumber")}
-              placeholder=""
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("pfNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+            {errors.pfNumber && <p className="text-sm text-red-500 mt-1">{errors.pfNumber.message}</p>}
           </div>
+
           <div>
             <Label>Insurance Number *</Label>
-            <Input
-              value={assets.insuranceNumber}
-              onChange={set("insuranceNumber")}
-              placeholder=""
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("insuranceNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+            {errors.insuranceNumber && <p className="text-sm text-red-500 mt-1">{errors.insuranceNumber.message}</p>}
           </div>
+
           <div>
             <Label>Serial Number</Label>
-            <Input
-              value={assets.serialNumber}
-              onChange={set("serialNumber")}
-              placeholder="e.g., ABC123XYZ"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("serialNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., ABC123XYZ" />
           </div>
+
           <div>
             <Label>Company Email *</Label>
-            <Input
-              value={assets.companyEmail}
-              onChange={set("companyEmail")}
-              placeholder=""
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("companyEmail")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+            {errors.companyEmail && <p className="text-sm text-red-500 mt-1">{errors.companyEmail.message}</p>}
           </div>
+
           <div>
             <Label>ID Number *</Label>
-            <Input
-              value={assets.idNumber}
-              onChange={set("idNumber")}
-              placeholder=""
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-            />
+            <input {...register("idNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+            {errors.idNumber && <p className="text-sm text-red-500 mt-1">{errors.idNumber.message}</p>}
           </div>
         </div>
 
         <div>
           <Label>SIM Card Number</Label>
-          <Input
-            value={assets.simNumber}
-            onChange={set("simNumber")}
-            placeholder="e.g., +91 98765 00000"
-            autoCapitalize="none"
-            autoComplete="off"
-            autoCorrect="off"
-          />
+          <input {...register("simNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., +91 98765 00000" />
+          {errors.simNumber && <p className="text-sm text-red-500 mt-1">{errors.simNumber.message}</p>}
         </div>
       </div>
     </div>
@@ -1033,7 +1238,8 @@ function AssetsForm({
 }
 
 /* -------------------- Step 5 -------------------- */
-function OrientationForm() {
+function OrientationForm({ onValidityChange }: { onValidityChange: (v: boolean) => void }) {
+  // For orientation we require all checkboxes to be checked before continuing
   const checklistItems = [
     "Complete IT security training",
     "Review company policies",
@@ -1043,18 +1249,33 @@ function OrientationForm() {
     "Tour office facilities",
   ];
 
+  const [checked, setChecked] = useState<boolean[]>(
+    Array(checklistItems.length).fill(false)
+  );
+
+  useEffect(() => {
+    const all = checked.every(Boolean);
+    onValidityChange(all);
+  }, [checked, onValidityChange]);
+
+  const toggle = (i: number) => () => {
+    setChecked((s) => {
+      const copy = [...s];
+      copy[i] = !copy[i];
+      return copy;
+    });
+  };
+
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        Track completion of orientation activities
-      </p>
+      <p className="text-sm text-muted-foreground">Track completion of orientation activities</p>
       <div className="space-y-3">
         {checklistItems.map((item, index) => (
           <label
             key={index}
             className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-secondary cursor-pointer transition-colors"
           >
-            <input type="checkbox" className="w-4 h-4" />
+            <input type="checkbox" checked={checked[index]} onChange={toggle(index)} className="w-4 h-4" />
             <span>{item}</span>
           </label>
         ))}
@@ -1071,9 +1292,8 @@ function CompletionForm() {
         <Check size={32} className="text-green-600" />
       </div>
       <h3 className="text-xl font-semibold">Onboarding Complete!</h3>
-      <p className="text-muted-foreground">
-        The employee has been successfully added to the system.
-      </p>
+      <p className="text-muted-foreground">The employee has been successfully added to the system.</p>
     </div>
   );
 }
+
