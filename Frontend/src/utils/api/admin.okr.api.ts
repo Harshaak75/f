@@ -27,21 +27,40 @@ export const okrService = {
   },
 
   /** POST /api/okr/objective */
-  async createObjective(payload: { title: string; quarter: number; year: number; ownerId: string }) {
+  async createObjective(payload: {
+    title: string;
+    quarter: number;
+    year: number;
+    ownerId: string;
+  }) {
     const { data } = await apiClient.post("/okr/objective", payload);
     return data as { id: string };
   },
 
   /** POST /api/okr/keyresult */
-  async createKeyResult(payload: { title: string; ownerId: string; objectiveId: string }) {
+  async createKeyResult(payload: {
+    title: string;
+    ownerId: string;
+    objectiveId: string;
+  }) {
     const { data } = await apiClient.post("/okr/keyresult", payload);
     return data as { id: string };
   },
 
   /** PUT /api/okr/keyresult/:krId */
-  async updateKeyResult(krId: string, payload: { progress: number; status: OkrStatus }) {
+  async updateKeyResult(
+    krId: string,
+    payload: { progress: number; status: OkrStatus }
+  ) {
     const { data } = await apiClient.put(`/okr/keyresult/${krId}`, payload);
     return data as { id: string };
+  },
+
+  async getPeriods() {
+    const { data } = await apiClient.get<{ quarter: number; year: number }[]>(
+      "/okr/available-periods"
+    );
+    return data;
   },
 };
 

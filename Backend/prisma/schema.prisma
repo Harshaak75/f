@@ -82,6 +82,7 @@ model Tenant {
   jobOpenings        JobOpening[] // NEW
   externalIdentities ExternalIdentity[]
   notifications      Notification[]
+  appraisals         Appraisal[]
 }
 
 model User {
@@ -152,6 +153,8 @@ model User {
   jobOpenings        JobOpening[] // NEW
   externalIdentities ExternalIdentity[]
   notifications      Notification[]
+  appraisals         Appraisal[]
+  managedAppraisals Appraisal[] @relation("ManagerOfAppraisals")
 }
 
 model Subscription {
@@ -544,6 +547,7 @@ model ReviewCycle {
   peerFeedbacks   PeerFeedback[]
 
   promotionRequests PromotionRequest[]
+  appraisals        Appraisal[]
 
   @@index([tenantId, status])
 }
@@ -1121,4 +1125,42 @@ model Notification {
 
   @@index([userId])
   @@index([tenantId])
+}
+
+// still not pushed
+
+model Appraisal {
+  id        String @id @default(cuid())
+  tenantId  String
+  cycleId   String
+  userId    String
+  managerId String
+
+  // Scores
+  selfScore    Float? // computed from self-assessment or manually
+  peerScore    Float? // avg(rating from PeerFeedback)
+  managerScore Float? // manager’s evaluation 0–5
+  finalScore   Float? // weighted final score 0–5
+
+  // Final results
+  finalRating       String? // "A+", "A", "B", "C"
+  salaryHikePercent Float? // % hike -> 10, 12, 18...
+  salaryHikeAmount  Float? // absolute hike -> ₹
+
+  status AppraisalStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  tenant  Tenant      @relation(fields: [tenantId], references: [id])
+  cycle   ReviewCycle @relation(fields: [cycleId], references: [id])
+  user    User        @relation(fields: [userId], references: [id])
+  manager User        @relation("ManagerOfAppraisals", fields: [managerId], references: [id])
+}
+
+enum AppraisalStatus {
+  DRAFT
+  IN_REVIEW
+  FINALIZED
 }

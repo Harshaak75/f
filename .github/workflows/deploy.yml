@@ -35,4 +35,9 @@ jobs:
             docker stop hrm-frontend || true
             docker rm hrm-frontend || true
             docker build -t hrm-frontend .
-            docker run -d --name hrm-frontend -p 3000:80 --restart unless-stopped hrm-frontend
+            docker run -d \
+              --name hrm-frontend \
+              --network hrm-network \
+              --restart unless-stopped \
+              -p 3000:80 \
+              hrm-frontend    

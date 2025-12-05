@@ -338,7 +338,7 @@ const adminMenuItems: MenuItem[] = [
     path: "/admin/leave",
     children: [
       { title: "Leave Approvals", icon: BadgeCheck, path: "/admin/leave/approvals" },
-      // { title: "Leave Policies", icon: Shield, path: "/admin/leave/policies" },
+      { title: "Leave Policies", icon: Shield, path: "/admin/leave/policies" },
     ],
   },
   {

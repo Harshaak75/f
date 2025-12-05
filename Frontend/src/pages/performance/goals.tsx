@@ -44,6 +44,7 @@ import {
   OkrStatus,
   uiToServerStatus,
 } from "../../utils/api/admin.okr.api";
+import { EmployeeDirectoryList } from "../../utils/api/Admin.employeeFunctionality";
 
 /* ----- small UI helpers ----- */
 const getStatusChip = (status: KeyResultDTO["status"]) => {
@@ -97,6 +98,19 @@ export default function OKRsDashboard() {
   const [krTitle, setKrTitle] = useState("");
   const [krOwnerId, setKrOwnerId] = useState("");
   const [creatingKR, setCreatingKR] = useState(false);
+  const [employees, setEmployees] = useState([]);
+
+  const [availablePeriods, setAvailablePeriods] = useState<
+    { quarter: number; year: number }[]
+  >([]);
+
+  useEffect(() => {
+    okrService.getPeriods().then(setAvailablePeriods);
+  }, []);
+
+  useEffect(() => {
+    EmployeeDirectoryList.getAllEmployeeDetails().then(setEmployees);
+  }, []);
 
   // per-KR inline update (progress/status)
   const [savingKR, setSavingKR] = useState<string | null>(null);
@@ -318,12 +332,19 @@ export default function OKRsDashboard() {
                   </div>
                 </div>
                 <div>
-                  <Label>Owner ID</Label>
-                  <Input
-                    value={objOwnerId}
-                    onChange={(e) => setObjOwnerId(e.target.value)}
-                    placeholder="userId of owner"
-                  />
+                  <Label>Owner</Label>
+                  <Select value={objOwnerId} onValueChange={setObjOwnerId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map((emp: any) => (
+                        <SelectItem key={emp.userId} value={emp.userId}>
+                          {emp.firstName} {emp.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <Button onClick={handleCreateObjective} disabled={creating}>
                   {creating ? (
@@ -341,9 +362,12 @@ export default function OKRsDashboard() {
               <SelectValue placeholder="Select Quarter" />
             </SelectTrigger>
             <SelectContent>
-              {QUARTER_OPTIONS.map((k) => (
-                <SelectItem value={k} key={k}>
-                  {k.toUpperCase().replace("-", " ")}
+              {availablePeriods.map((p) => (
+                <SelectItem
+                  key={`q${p.quarter}-${p.year}`}
+                  value={`q${p.quarter}-${p.year}`}
+                >
+                  Q{p.quarter} {p.year}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -480,12 +504,25 @@ export default function OKRsDashboard() {
                         />
                       </div>
                       <div>
-                        <Label>Owner ID</Label>
+                        {/* <Label>Owner ID</Label>
                         <Input
                           value={krOwnerId}
                           onChange={(e) => setKrOwnerId(e.target.value)}
                           placeholder="userId of owner"
-                        />
+                        /> */}
+                        <Label>Owner</Label>
+                  <Select value={krOwnerId} onValueChange={setKrOwnerId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map((emp: any) => (
+                        <SelectItem key={emp.userId} value={emp.userId}>
+                          {emp.firstName} {emp.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                       </div>
                       <Button
                         onClick={() => handleCreateKR(objective.id)}
@@ -503,85 +540,88 @@ export default function OKRsDashboard() {
             </div>
 
             {/* table */}
-            <Table>
-              <TableHeader className="bg-gray-50">
-                <TableRow className="hover:bg-gray-50">
-                  <TableHead className="w-[45%] text-gray-600">
-                    Key Result Metric
-                  </TableHead>
-                  <TableHead className="w-[15%] text-gray-600">Owner</TableHead>
-                  <TableHead className="w-[25%] text-gray-600">
-                    Progress
-                  </TableHead>
-                  <TableHead className="w-[15%] text-gray-600 text-center">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {objective.keyResults.map((kr) => (
-                  <TableRow key={kr.id} className="hover:bg-indigo-50/50">
-                    <TableCell className="font-medium text-gray-700">
-                      {kr.keyResult}
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-600">
-                      {kr.owner}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="w-full max-w-xs">
-                          <Slider
-                            value={[kr.progress]}
-                            max={100}
-                            step={5}
-                            onValueChange={(v) =>
-                              handleUpdateKR(kr.id, { progress: v[0] })
-                            }
-                            disabled={savingKR === kr.id}
-                          />
-                          <div className="mt-2">
-                            <ProgressBar progress={kr.progress} />
-                          </div>
-                        </div>
-                        <div className="text-sm font-semibold text-gray-700 w-10 text-right">
-                          {savingKR === kr.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin mx-auto" />
-                          ) : (
-                            `${kr.progress}%`
-                          )}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Select
-                        value={kr.status}
-                        onValueChange={(v) =>
-                          handleUpdateKR(kr.id, {
-                            status: v as KeyResultDTO["status"],
-                          })
-                        }
-                        disabled={savingKR === kr.id}
-                      >
-                        <SelectTrigger className="w-[140px] mx-auto">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Planned">Planned</SelectItem>
-                          <SelectItem value="On Track">On Track</SelectItem>
-                          <SelectItem value="At Risk">At Risk</SelectItem>
-                          <SelectItem value="Completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <div className="mt-2">
-                        <span className={getStatusChip(kr.status)}>
-                          {kr.status}
-                        </span>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+<Table>
+  <TableHeader className="bg-gray-50">
+    <TableRow className="hover:bg-gray-50">
+      <TableHead className="w-[45%] text-gray-600">Key Result Metric</TableHead>
+      <TableHead className="w-[15%] text-gray-600">Owner</TableHead>
+      <TableHead className="w-[25%] text-gray-600">Progress</TableHead>
+      <TableHead className="w-[15%] text-gray-600 text-center">Status</TableHead>
+    </TableRow>
+  </TableHeader>
+
+  <TableBody>
+    {objective.keyResults.map((kr) => (
+      <TableRow key={kr.id} className="hover:bg-indigo-50/50 h-[90px]">
+
+        {/* Key Result */}
+        <TableCell className="font-medium text-gray-700 align-middle w-[45%]">
+          {kr.keyResult}
+        </TableCell>
+
+        {/* Owner */}
+        <TableCell className="text-sm text-gray-600 align-middle w-[15%]">
+          {kr.owner}
+        </TableCell>
+
+        {/* Progress */}
+        <TableCell className="w-[25%] align-middle">
+          <div className="flex items-center gap-4">
+            {/* Slider + bar stacked */}
+            <div className="flex flex-col gap-1 w-full">
+              <Slider
+                value={[kr.progress]}
+                max={100}
+                step={5}
+                onValueChange={(v) => handleUpdateKR(kr.id, { progress: v[0] })}
+                disabled={savingKR === kr.id}
+              />
+
+              <ProgressBar progress={kr.progress} />
+            </div>
+
+            {/* Percentage */}
+            <div className="text-sm font-semibold text-gray-700 w-12 text-right">
+              {savingKR === kr.id ? (
+                <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+              ) : (
+                `${kr.progress}%`
+              )}
+            </div>
+          </div>
+        </TableCell>
+
+        {/* Status */}
+        <TableCell className="w-[15%] text-center align-middle">
+          <div className="flex flex-col items-center gap-2">
+
+            <Select
+              value={kr.status}
+              onValueChange={(v) =>
+                handleUpdateKR(kr.id, { status: v as KeyResultDTO["status"] })
+              }
+              disabled={savingKR === kr.id}
+            >
+              <SelectTrigger className="w-[130px] mx-auto">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Planned">Planned</SelectItem>
+                <SelectItem value="On Track">On Track</SelectItem>
+                <SelectItem value="At Risk">At Risk</SelectItem>
+                <SelectItem value="Completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Chip */}
+            <span className={getStatusChip(kr.status)}>{kr.status}</span>
+          </div>
+        </TableCell>
+      </TableRow>
+    ))}
+  </TableBody>
+</Table>
+
           </div>
         ))}
       </Card>

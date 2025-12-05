@@ -20,7 +20,8 @@ import ComplianceRoute from "./routes/compliance.routes";
 import ExitRoute from "./routes/exit.routes";
 import AnalyticsRoute from "./routes/analytics.routes";
 import tenantApi from "./routes/idp.manage";
-import AdminDashboardRoute from "./routes/adminDashboard.route"
+import AdminDashboardRoute from "./routes/adminDashboard.route";
+import AdminLeavePolicy from "./routes/leave.policy.routes"
 // import dashboardRoutes from "./routes/dashboard.routes";
 
 dotenv.config();
@@ -75,6 +76,7 @@ app.use("/api/exit", ExitRoute);
 app.use("/api/analytics", AnalyticsRoute);
 app.use("/api/tenant", tenantApi)
 app.use("/api/adminDashboard", AdminDashboardRoute)
+app.use("/api/leave", AdminLeavePolicy)
 // app.use("/api/dashboard", dashboardRoutes);
 
 // ✅ Root test route
