@@ -152,8 +152,11 @@ router.post("/login", async (req, res) => {
       role: user.role,
     });
 
+    let isSSO = req.query.sso === "1";
+
     res.cookie('token', token, {
       httpOnly: true, // Javascript can't access this
+      sameSite: isSSO ? "none" : "strict",
       secure: process.env.NODE_ENV === 'production', // Only send over HTTPS in production
       maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
       path: '/', // Make it available site-wide
