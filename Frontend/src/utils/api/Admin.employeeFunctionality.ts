@@ -17,6 +17,7 @@ export interface CreateOnboardingPayload {
   joiningDate: string; // yyyy-mm-dd
   employeeType: string; // full-time | part-time | contractor
   dateOfBirth: string; // yyyy-mm-dd
+  accessRole: "OPERATOR" | "MANAGER" | "PROJECT_MANAGER";
 }
 
 export interface OnboardingEmployee {

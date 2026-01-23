@@ -22,6 +22,7 @@ import AnalyticsRoute from "./routes/analytics.routes";
 import tenantApi from "./routes/idp.manage";
 import AdminDashboardRoute from "./routes/adminDashboard.route";
 import AdminLeavePolicy from "./routes/leave.policy.routes"
+import internalTenantRoutes from "./routes/internalTenant";
 // import dashboardRoutes from "./routes/dashboard.routes";
 
 dotenv.config();
@@ -33,7 +34,7 @@ const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://f-jet-eight.verc
 
 // ✅ Middlewares
 app.use(cors({
-  origin: [FRONTEND_ORIGIN,"http://194.163.139.103:3000", "https://f-bf0y.onrender.com","http://localhost:8080", "http://localhost:4000"],             // ❗ NOT "*"
+  origin: [FRONTEND_ORIGIN,"http://194.163.139.103:3000", "https://f-bf0y.onrender.com","http://localhost:8080","http://localhost:8081", "http://localhost:4000"],             // ❗ NOT "*"
   credentials: true,                   // allow sending cookies
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
   allowedHeaders: ['Content-Type','Authorization'],
@@ -77,6 +78,7 @@ app.use("/api/analytics", AnalyticsRoute);
 app.use("/api/tenant", tenantApi)
 app.use("/api/adminDashboard", AdminDashboardRoute)
 app.use("/api/leave", AdminLeavePolicy)
+app.use("/api/internal", internalTenantRoutes);
 // app.use("/api/dashboard", dashboardRoutes);
 
 // ✅ Root test route

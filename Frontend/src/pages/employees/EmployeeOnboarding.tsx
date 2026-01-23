@@ -65,6 +65,7 @@ const initialBasic: CreateOnboardingPayload = {
   joiningDate: "", // yyyy-mm-dd
   employeeType: "", // full-time | part-time | contractor
   dateOfBirth: "", // yyyy-mm-dd
+  accessRole: "OPERATOR",
 };
 
 type DocsState = {
@@ -353,8 +354,8 @@ export default function EmployeeOnboarding() {
                       currentStep > step.id
                         ? "bg-primary text-primary-foreground"
                         : currentStep === step.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-secondary text-muted-foreground"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground"
                     )}
                   >
                     {currentStep > step.id ? <Check size={20} /> : step.id}
@@ -422,41 +423,41 @@ export default function EmployeeOnboarding() {
             {currentStep === 6 && <CompletionForm />}
           </motion.div>
 
-<div className="flex justify-between mt-8">
-  {/* Hide Previous on Step 6 */}
-  {currentStep !== 6 ? (
-    <Button
-      variant="outline"
-      onClick={handlePrev}
-      disabled={currentStep === 1 || loading}
-    >
-      Previous
-    </Button>
-  ) : (
-    <div /> /* keeps spacing balanced */
-  )}
+          <div className="flex justify-between mt-8">
+            {/* Hide Previous on Step 6 */}
+            {currentStep !== 6 ? (
+              <Button
+                variant="outline"
+                onClick={handlePrev}
+                disabled={currentStep === 1 || loading}
+              >
+                Previous
+              </Button>
+            ) : (
+              <div /> /* keeps spacing balanced */
+            )}
 
-  <Button
-    onClick={currentStep === steps.length ? handleFinish : handleNext}
-    disabled={
-      currentStep === 6
-        ? loading // Step 6: only disable if loading
-        : !isStepValid || loading // Steps 1–5: validation controls disabled state
-    }
-    className={cn(
-      (loading || (currentStep !== 6 && !isStepValid)) &&
-        "opacity-70 cursor-not-allowed"
-    )}
-  >
-    {currentStep === steps.length
-      ? loading
-        ? "Finishing..."
-        : "Finish"
-      : loading
-      ? "Saving..."
-      : "Next"}
-  </Button>
-</div>
+            <Button
+              onClick={currentStep === steps.length ? handleFinish : handleNext}
+              disabled={
+                currentStep === 6
+                  ? loading // Step 6: only disable if loading
+                  : !isStepValid || loading // Steps 1–5: validation controls disabled state
+              }
+              className={cn(
+                (loading || (currentStep !== 6 && !isStepValid)) &&
+                "opacity-70 cursor-not-allowed"
+              )}
+            >
+              {currentStep === steps.length
+                ? loading
+                  ? "Finishing..."
+                  : "Finish"
+                : loading
+                  ? "Saving..."
+                  : "Next"}
+            </Button>
+          </div>
 
         </CardContent>
       </Card>
@@ -505,8 +506,11 @@ function BasicInfoForm({
       joiningDate: basic.joiningDate,
       dateOfBirth: basic.dateOfBirth,
       employeeType: basic.employeeType as any,
+      accessRole: basic.accessRole,
     },
   });
+
+  
 
   // sync validity up
   useEffect(() => {
@@ -533,6 +537,7 @@ function BasicInfoForm({
         joiningDate: values.joiningDate ?? "",
         dateOfBirth: values.dateOfBirth ?? "",
         employeeType: (values.employeeType as any) ?? "",
+        accessRole: values.accessRole ?? "OPERATOR",
       }));
     });
     return () => sub.unsubscribe();
@@ -702,6 +707,8 @@ function BasicInfoForm({
             <p className="text-sm text-red-500 mt-1">{errors.designation.message}</p>
           )}
         </div>
+
+
         <div>
           <Label>Employee ID</Label>
           <input
@@ -766,6 +773,25 @@ function BasicInfoForm({
             <p className="text-sm text-red-500 mt-1">{errors.employeeType.message}</p>
           )}
         </div>
+        <div>
+          <Label>Access Role *</Label>
+          <Controller
+            control={control}
+            name="accessRole"
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select system role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="OPERATOR">Operator</SelectItem>
+                  <SelectItem value="MANAGER">Manager</SelectItem>
+                  <SelectItem value="PROJECT_MANAGER">Project Manager</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
       </div>
     </div>
   );
@@ -815,15 +841,15 @@ function DocumentsForm({
   // Add files
   const onPick =
     (key: keyof DocsState) =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? []);
-      const updated = [...(docs[key] || []), ...files];
-      setDocs((s) => ({ ...s, [key]: updated }));
-      setValue(key as any, updated as any, {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-    };
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files ?? []);
+        const updated = [...(docs[key] || []), ...files];
+        setDocs((s) => ({ ...s, [key]: updated }));
+        setValue(key as any, updated as any, {
+          shouldValidate: true,
+          shouldDirty: true,
+        });
+      };
 
   // Remove one file
   const removeOne = (key: keyof DocsState, index: number) => () => {
@@ -1101,21 +1127,158 @@ function OfferForm({
 
 /* -------------------- Step 4 -------------------- */
 
+// function AssetsForm({
+//   assets,
+//   setAssets,
+//   onValidityChange,
+// }: {
+// assets: {
+//   laptopBrand?: string;
+//   laptopModel?: string;
+//   serialNumber?: string;
+//   esiNumber?: string;
+//   pfNumber?: string;
+//   insuranceNumber?: string;
+//   companyEmail?: string;
+//   idNumber?: string;
+//   simNumber?: string;
+// };
+//   setAssets: React.Dispatch<
+//     React.SetStateAction<{
+//       laptopBrand: string;
+//       laptopModel: string;
+//       serialNumber: string;
+//       esiNumber: string;
+//       pfNumber: string;
+//       insuranceNumber: string;
+//       companyEmail: string;
+//       idNumber: string;
+//       simNumber: string;
+//     }>
+//   >;
+//   onValidityChange: (v: boolean) => void;
+// }) {
+//   type AssetsFormType = z.infer<typeof assetsSchema>;
+//   const emptyToUndefined = (v: any) => (v === "" ? undefined : v);
+
+//   const { register, watch, formState: { errors, isValid } } = useForm<AssetsFormType>({
+//     resolver: zodResolver(assetsSchema),
+//     mode: "onChange",
+//     defaultValues: {
+//       laptopBrand: assets.laptopBrand,
+//       laptopModel: assets.laptopModel,
+//       serialNumber: assets.serialNumber,
+//       esiNumber: assets.esiNumber,
+//       pfNumber: assets.pfNumber,
+//       insuranceNumber: assets.insuranceNumber,
+//       companyEmail: assets.companyEmail,
+//       idNumber: assets.idNumber,
+//       simNumber: assets.simNumber,
+//     },
+//   });
+
+//   useEffect(() => {
+//     onValidityChange(isValid);
+//   }, [isValid, onValidityChange]);
+
+//   useEffect(() => {
+//     const sub = watch((values) => {
+//       setAssets((s) => ({
+//         ...s,
+//         laptopBrand: values.laptopBrand ?? "",
+//         laptopModel: values.laptopModel ?? "",
+//         serialNumber: values.serialNumber ?? "",
+//         esiNumber: values.esiNumber ?? "",
+//         pfNumber: values.pfNumber ?? "",
+//         insuranceNumber: values.insuranceNumber ?? "",
+//         companyEmail: values.companyEmail ?? "",
+//         idNumber: values.idNumber ?? "",
+//         simNumber: values.simNumber ?? "",
+//       }));
+//     });
+//     return () => sub.unsubscribe();
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, [watch]);
+
+//   const setField = (k: keyof typeof assets) => (e: any) =>
+//     setAssets((s) => ({ ...s, [k]: e.target.value }));
+
+//   return (
+//     <div className="space-y-4">
+//       <p className="text-sm text-muted-foreground">Assign company assets to the new employee</p>
+//       <div className="space-y-4">
+//         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//           <div>
+//             <Label>Laptop Brand</Label>
+//             <input {...register("laptopBrand", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., Dell" />
+//           </div>
+//           <div>
+//             <Label>Laptop Model</Label>
+//             <input {...register("laptopModel", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., XPS 15" />
+//           </div>
+//         </div>
+
+//         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//           <div>
+//             <Label>ESI Number</Label>
+//             <input {...register("serialNumber", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+//             {errors.esiNumber && <p className="text-sm text-red-500 mt-1">{errors.esiNumber.message}</p>}
+//           </div>
+//           <div>
+//             <Label>PF Number</Label>
+//             <input {...register("pfNumber", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+//             {errors.pfNumber && <p className="text-sm text-red-500 mt-1">{errors.pfNumber.message}</p>}
+//           </div>
+
+//           <div>
+//             <Label>Insurance Number</Label>
+//             <input {...register("insuranceNumber", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+//             {errors.insuranceNumber && <p className="text-sm text-red-500 mt-1">{errors.insuranceNumber.message}</p>}
+//           </div>
+
+//           <div>
+//             <Label>Serial Number</Label>
+//             <input {...register("serialNumber", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., ABC123XYZ" />
+//           </div>
+
+//           <div>
+//             <Label>Company Email</Label>
+//             <input {...register("companyEmail", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+//             {errors.companyEmail && <p className="text-sm text-red-500 mt-1">{errors.companyEmail.message}</p>}
+//           </div>
+
+//           <div>
+//             <Label>ID Number</Label>
+//             <input {...register("idNumber", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
+//             {errors.idNumber && <p className="text-sm text-red-500 mt-1">{errors.idNumber.message}</p>}
+//           </div>
+//         </div>
+
+//         <div>
+//           <Label>SIM Card Number</Label>
+//           <input {...register("simNumber", { setValueAs: emptyToUndefined })} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., +91 98765 00000" />
+//           {errors.simNumber && <p className="text-sm text-red-500 mt-1">{errors.simNumber.message}</p>}
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }
+
 function AssetsForm({
   assets,
   setAssets,
   onValidityChange,
 }: {
   assets: {
-    laptopBrand: string;
-    laptopModel: string;
-    serialNumber: string;
-    esiNumber: string;
-    pfNumber: string;
-    insuranceNumber: string;
-    companyEmail: string;
-    idNumber: string;
-    simNumber: string;
+    laptopBrand?: string;
+    laptopModel?: string;
+    serialNumber?: string;
+    esiNumber?: string;
+    pfNumber?: string;
+    insuranceNumber?: string;
+    companyEmail?: string;
+    idNumber?: string;
+    simNumber?: string;
   };
   setAssets: React.Dispatch<
     React.SetStateAction<{
@@ -1134,7 +1297,15 @@ function AssetsForm({
 }) {
   type AssetsFormType = z.infer<typeof assetsSchema>;
 
-  const { register, watch, formState: { errors, isValid } } = useForm<AssetsFormType>({
+  // 🔑 Converts "" → undefined so Zod optional works correctly
+  const emptyToUndefined = (v: any) => (v === "" ? undefined : v);
+
+  const {
+    register,
+    watch,
+    trigger,
+    formState: { errors, isValid },
+  } = useForm<AssetsFormType>({
     resolver: zodResolver(assetsSchema),
     mode: "onChange",
     defaultValues: {
@@ -1151,9 +1322,15 @@ function AssetsForm({
   });
 
   useEffect(() => {
+  trigger(); // 👈 force initial validation
+}, [trigger]);
+
+  // Inform parent about form validity
+  useEffect(() => {
     onValidityChange(isValid);
   }, [isValid, onValidityChange]);
 
+  // Sync form → parent state
   useEffect(() => {
     const sub = watch((values) => {
       setAssets((s) => ({
@@ -1169,73 +1346,134 @@ function AssetsForm({
         simNumber: values.simNumber ?? "",
       }));
     });
-    return () => sub.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watch]);
 
-  const setField = (k: keyof typeof assets) => (e: any) =>
-    setAssets((s) => ({ ...s, [k]: e.target.value }));
+    return () => sub.unsubscribe();
+  }, [watch, setAssets]);
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Assign company assets to the new employee</p>
+      <p className="text-sm text-muted-foreground">
+        Assign company assets to the new employee
+      </p>
+
       <div className="space-y-4">
+        {/* Laptop */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label>Laptop Brand</Label>
-            <input {...register("laptopBrand")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., Dell" />
+            <input
+              {...register("laptopBrand", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+              placeholder="e.g., Dell"
+            />
           </div>
+
           <div>
             <Label>Laptop Model</Label>
-            <input {...register("laptopModel")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., XPS 15" />
+            <input
+              {...register("laptopModel", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+              placeholder="e.g., XPS 15"
+            />
           </div>
         </div>
 
+        {/* Statutory + Serial */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label>ESI Number *</Label>
-            <input {...register("esiNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
-            {errors.esiNumber && <p className="text-sm text-red-500 mt-1">{errors.esiNumber.message}</p>}
-          </div>
-          <div>
-            <Label>PF Number *</Label>
-            <input {...register("pfNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
-            {errors.pfNumber && <p className="text-sm text-red-500 mt-1">{errors.pfNumber.message}</p>}
+            <Label>ESI Number</Label>
+            <input
+              {...register("esiNumber", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+            />
+            {errors.esiNumber && (
+              <p className="text-sm text-red-500 mt-1">
+                {errors.esiNumber.message}
+              </p>
+            )}
           </div>
 
           <div>
-            <Label>Insurance Number *</Label>
-            <input {...register("insuranceNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
-            {errors.insuranceNumber && <p className="text-sm text-red-500 mt-1">{errors.insuranceNumber.message}</p>}
+            <Label>PF Number</Label>
+            <input
+              {...register("pfNumber", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+            />
+            {errors.pfNumber && (
+              <p className="text-sm text-red-500 mt-1">
+                {errors.pfNumber.message}
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Label>Insurance Number</Label>
+            <input
+              {...register("insuranceNumber", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+            />
+            {errors.insuranceNumber && (
+              <p className="text-sm text-red-500 mt-1">
+                {errors.insuranceNumber.message}
+              </p>
+            )}
           </div>
 
           <div>
             <Label>Serial Number</Label>
-            <input {...register("serialNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., ABC123XYZ" />
+            <input
+              {...register("serialNumber", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+              placeholder="e.g., ABC123XYZ"
+            />
           </div>
 
           <div>
-            <Label>Company Email *</Label>
-            <input {...register("companyEmail")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
-            {errors.companyEmail && <p className="text-sm text-red-500 mt-1">{errors.companyEmail.message}</p>}
+            <Label>Company Email</Label>
+            <input
+              {...register("companyEmail", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+            />
+            {errors.companyEmail && (
+              <p className="text-sm text-red-500 mt-1">
+                {errors.companyEmail.message}
+              </p>
+            )}
           </div>
 
           <div>
-            <Label>ID Number *</Label>
-            <input {...register("idNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" />
-            {errors.idNumber && <p className="text-sm text-red-500 mt-1">{errors.idNumber.message}</p>}
+            <Label>ID Number</Label>
+            <input
+              {...register("idNumber", { setValueAs: emptyToUndefined })}
+              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+            />
+            {errors.idNumber && (
+              <p className="text-sm text-red-500 mt-1">
+                {errors.idNumber.message}
+              </p>
+            )}
           </div>
         </div>
 
+        {/* SIM */}
         <div>
           <Label>SIM Card Number</Label>
-          <input {...register("simNumber")} className="input-base mt-1 w-full p-1 border-none outline-gray-100" placeholder="e.g., +91 98765 00000" />
-          {errors.simNumber && <p className="text-sm text-red-500 mt-1">{errors.simNumber.message}</p>}
+          <input
+            {...register("simNumber", { setValueAs: emptyToUndefined })}
+            className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+            placeholder="e.g., +91 98765 00000"
+          />
+          {errors.simNumber && (
+            <p className="text-sm text-red-500 mt-1">
+              {errors.simNumber.message}
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
 
 /* -------------------- Step 5 -------------------- */
 function OrientationForm({ onValidityChange }: { onValidityChange: (v: boolean) => void }) {

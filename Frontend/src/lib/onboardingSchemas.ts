@@ -22,6 +22,7 @@ export const basicInfoSchema = z.object({
   joiningDate: z.string().min(1, "Joining date is required"),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
   employeeType: z.enum(["full-time", "part-time", "contractor"]),
+  accessRole: z.enum(["OPERATOR", "MANAGER", "PROJECT_MANAGER"]),
 });
 
 export const documentsSchema = z.object({
@@ -44,18 +45,66 @@ export const offerSchema = z.object({
   netSalary: z.string().min(1),
 });
 
+// export const assetsSchema = z.object({
+//   laptopBrand: z.string().optional(),
+//   laptopModel: z.string().optional(),
+//   serialNumber: z.string().optional(),
+
+//   esiNumber: z.string().min(1, "ESI number is required"),
+//   pfNumber: z.string().min(1, "PF number is required"),
+//   insuranceNumber: z.string().min(1, "Insurance number is required"),
+//   companyEmail: z.string().email("Invalid company email"),
+//   idNumber: z.string().min(1, "ID number is required"),
+//   simNumber: z
+//     .string()
+//     .regex(/^[6-9]\d{9}$/, "Invalid Indian phone number")
+//     .optional(),
+// });
+
 export const assetsSchema = z.object({
   laptopBrand: z.string().optional(),
   laptopModel: z.string().optional(),
   serialNumber: z.string().optional(),
 
-  esiNumber: z.string().min(1, "ESI number is required"),
-  pfNumber: z.string().min(1, "PF number is required"),
-  insuranceNumber: z.string().min(1, "Insurance number is required"),
-  companyEmail: z.string().email("Invalid company email"),
-  idNumber: z.string().min(1, "ID number is required"),
+  esiNumber: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.length >= 3, {
+      message: "Invalid ESI number",
+    }),
+
+  pfNumber: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.length >= 3, {
+      message: "Invalid PF number",
+    }),
+
+  insuranceNumber: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.length >= 3, {
+      message: "Invalid insurance number",
+    }),
+
+  companyEmail: z
+    .string()
+    .optional()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+      message: "Invalid company email",
+    }),
+
+  idNumber: z
+    .string()
+    .optional()
+    .refine((v) => !v || v.length >= 3, {
+      message: "Invalid ID number",
+    }),
+
   simNumber: z
     .string()
-    .regex(/^[6-9]\d{9}$/, "Invalid Indian phone number")
-    .optional(),
+    .optional()
+    .refine((v) => !v || /^[6-9]\d{9}$/.test(v), {
+      message: "Invalid SIM number",
+    }),
 });

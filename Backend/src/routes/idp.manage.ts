@@ -118,7 +118,7 @@ router.post("/create/tenantApi", protect, async (req, res) => {
     if (
       !idpType ||
       !idpIssuerUrl ||
-      !idpClientId || 
+      !idpClientId ||
       !idpClientSecret ||
       !tenantId
     ) {
@@ -161,10 +161,18 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
   console.log("👉 apiConfig:", apiConfig);
   if (!apiConfig) return res.status(400).send("IdP not configured");
 
+  const issuerUrl: any = apiConfig.idpIssuerUrl;
+
   // Verify Keycloak token using JWKS endpoint
+  const internalJwksUri = issuerUrl
+    .replace("http://194.163.139.103:8090", "http://keycloak:8080")
+    + "/protocol/openid-connect/certs";
+
   const client = jwksClient({
-    jwksUri: `${apiConfig.idpIssuerUrl}/protocol/openid-connect/certs`,
+    jwksUri: internalJwksUri,
   });
+
+  // const client = jwksClient({ jwksUri: ${apiConfig.idpIssuerUrl}/protocol/openid-connect/certs, });
 
   const decodedHeader: any = jwt.decode(token, { complete: true });
   console.log("👉 decodedHeader:", decodedHeader);
@@ -236,3 +244,5 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
 });
 
 export default router;
+
+

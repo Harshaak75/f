@@ -9,7 +9,8 @@ import multer from "multer";
 import { supabase } from "../utils/Client";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
-import { createKeycloakUser } from "../utils/CreateKeycloakUser";
+import { createKeycloakUser } from "../services/keycloakUsers";
+import { assignRealmRole } from "../services/keycloakRoles";
 
 const router = express.Router();
 
@@ -54,6 +55,7 @@ router.post("/create-onboarding", protect, async (req, res) => {
     joiningDate, // "YYYY-MM-DD"
     employeeType,
     dateOfBirth, // "YYYY-MM-DD"
+    accessRole,
   } = req.body;
 
   if (
@@ -73,13 +75,17 @@ router.post("/create-onboarding", protect, async (req, res) => {
       .json({ message: "Missing required fields for new employee." });
   }
 
+  if (!accessRole) {
+    return res.status(400).json({ message: "Access role is required" });
+  }
+
   // Normalize date-only strings to IST midnight to avoid TZ shifts
   const toISTMidnight = (ymd: string) => new Date(`${ymd}T00:00:00+05:30`);
   const joiningDateIso = toISTMidnight(joiningDate);
   const dobIso = toISTMidnight(dateOfBirth);
 
   try {
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx: any) => {
       // 1) Does a user with this email already exist?
       const existingUser = await tx.user.findUnique({ where: { email } });
 
@@ -114,6 +120,7 @@ router.post("/create-onboarding", protect, async (req, res) => {
               designation,
               joiningDate: joiningDateIso,
               employeeType,
+              accessRole,
               userId: existingUser.id,
               tenantId,
             },
@@ -173,6 +180,7 @@ router.post("/create-onboarding", protect, async (req, res) => {
           designation,
           joiningDate: joiningDateIso,
           employeeType,
+          accessRole,
           userId: newUser.id,
           tenantId,
         },
@@ -350,21 +358,135 @@ router.post(
  * Protected Route: Only ADMINs can access this.
  * Upserts the Offer Letter details (Step 3) for an Employee.
  */
+// router.post("/:profileId/offer", protect, async (req, res) => {
+//   const { tenantId, role } = req.user!;
+//   const { profileId } = req.params;
+//   const {
+//     annualCTC,
+//     roleTitle,
+//     basic,
+//     hra,
+//     da,
+//     specialAllowance,
+//     grossSalary, // Matched to schema
+//     pfDeduction, // Matched to schema
+//     tax, // Matched to schema
+//     netSalary, // Matched to schema
+//   } = req.body;
+
+//   if (role !== Role.ADMIN) {
+//     return res
+//       .status(403)
+//       .json({ message: "Forbidden: Only admins can add offer details." });
+//   }
+
+//   // --- Logic to match new schema ---
+//   const profile = await prisma.employeeProfile.findFirst({
+//     where: { id: profileId, tenantId },
+//     select: {
+//       userId: true,
+//       firstName: true,
+//       lastName: true,
+//       personalEmail: true,
+//       accessRole: true,
+
+//       user: {
+//         select: {
+//           email: true,
+//         },
+//       },
+//       tenant: {
+//         select: {
+//           tenantCode: true, // 🔥 THIS IS WHAT WE NEED
+//         },
+//       },
+//     },
+//   });
+//   if (!profile) {
+//     return res.status(404).json({ message: "Employee profile not found." });
+//   }
+//   const { userId } = profile;
+
+//   if (
+//     !annualCTC ||
+//     !roleTitle ||
+//     !basic ||
+//     !hra ||
+//     !grossSalary ||
+//     !pfDeduction ||
+//     !tax ||
+//     !netSalary
+//   ) {
+//     return res.status(400).json({ message: "Missing required offer fields." });
+//   }
+
+//   try {
+//     const offerData = {
+//       annualCTC: parseFloat(annualCTC),
+//       roleTitle,
+//       basic: parseFloat(basic),
+//       hra: parseFloat(hra),
+//       da: da ? parseFloat(da) : 0,
+//       specialAllowance: specialAllowance ? parseFloat(specialAllowance) : 0,
+//       grossSalary: parseFloat(grossSalary),
+//       pfDeduction: parseFloat(pfDeduction),
+//       tax: parseFloat(tax),
+//       netSalary: parseFloat(netSalary),
+//       userId: userId, // Linked to User
+//       tenantId: tenantId, // Linked to Tenant
+//     };
+
+//     // Upsert works because `userId` is @unique on the Offer model
+//     const upsertedOffer = await prisma.offer.upsert({
+//       where: {
+//         userId: userId,
+//       },
+//       update: offerData,
+//       create: offerData,
+//     });
+
+//     // call the keyclock to create the employee
+
+//     // const keycloakUserId = await createKeycloakUser({
+//     //   email: profile.personalEmail || "",
+//     //   firstName: profile.firstName,
+//     //   lastName: profile.lastName,
+//     //   designation: profile.designation,
+//     //   tenantId: tenantId,
+//     // });
+
+//     // await prisma.externalIdentity.upsert({
+//     //   where: {
+//     //     email: profile.personalEmail || "",
+//     //   },
+//     //   update: {
+//     //     provider: "keycloak",
+//     //     subject: keycloakUserId.keycloakUserId,
+//     //     tenantId: tenantId,
+//     //     email: profile.personalEmail || "",
+//     //   },
+//     //   create: {
+//     //     userId: userId,
+//     //     provider: "keycloak",
+//     //     subject: keycloakUserId.keycloakUserId,
+//     //     tenantId: tenantId,
+//     //     email: profile.personalEmail || "",
+//     //   },
+//     // });
+
+//     res.status(201).json({
+//       message: "Offer details saved successfully.",
+//       offer: upsertedOffer,
+//     });
+//   } catch (error) {
+//     console.error("Failed to save offer details:", error);
+//     res.status(500).json({ message: "Internal server error" });
+//   }
+// });
+
 router.post("/:profileId/offer", protect, async (req, res) => {
   const { tenantId, role } = req.user!;
   const { profileId } = req.params;
-  const {
-    annualCTC,
-    roleTitle,
-    basic,
-    hra,
-    da,
-    specialAllowance,
-    grossSalary, // Matched to schema
-    pfDeduction, // Matched to schema
-    tax, // Matched to schema
-    netSalary, // Matched to schema
-  } = req.body;
 
   if (role !== Role.ADMIN) {
     return res
@@ -372,91 +494,93 @@ router.post("/:profileId/offer", protect, async (req, res) => {
       .json({ message: "Forbidden: Only admins can add offer details." });
   }
 
-  // --- Logic to match new schema ---
-  const profile = await prisma.employeeProfile.findFirst({
-    where: { id: profileId, tenantId: tenantId },
+  // 1️⃣ Fetch profile + tenantCode + accessRole
+  const profile: any = await prisma.employeeProfile.findFirst({
+    where: { id: profileId, tenantId },
+    select: {
+      userId: true,
+      firstName: true,
+      lastName: true,
+      personalEmail: true,
+      accessRole: true,
+      user: {
+        select: { email: true },
+      },
+      tenant: {
+        select: { tenantCode: true },
+      },
+    },
   });
+
   if (!profile) {
     return res.status(404).json({ message: "Employee profile not found." });
   }
-  const { userId } = profile;
 
-  if (
-    !annualCTC ||
-    !roleTitle ||
-    !basic ||
-    !hra ||
-    !grossSalary ||
-    !pfDeduction ||
-    !tax ||
-    !netSalary
-  ) {
-    return res.status(400).json({ message: "Missing required offer fields." });
-  }
+  const userEmail: any = profile.personalEmail || profile.user.email;
 
-  try {
-    const offerData = {
-      annualCTC: parseFloat(annualCTC),
-      roleTitle,
-      basic: parseFloat(basic),
-      hra: parseFloat(hra),
-      da: da ? parseFloat(da) : 0,
-      specialAllowance: specialAllowance ? parseFloat(specialAllowance) : 0,
-      grossSalary: parseFloat(grossSalary),
-      pfDeduction: parseFloat(pfDeduction),
-      tax: parseFloat(tax),
-      netSalary: parseFloat(netSalary),
-      userId: userId, // Linked to User
-      tenantId: tenantId, // Linked to Tenant
-    };
+  // 2️⃣ Save / upsert offer
+  const offerData: any = {
+    annualCTC: Number(req.body.annualCTC),
+    roleTitle: req.body.roleTitle,
+    basic: Number(req.body.basic),
+    hra: Number(req.body.hra),
+    da: Number(req.body.da || 0),
+    specialAllowance: Number(req.body.specialAllowance || 0),
+    grossSalary: Number(req.body.grossSalary),
+    pfDeduction: Number(req.body.pfDeduction),
+    tax: Number(req.body.tax),
+    netSalary: Number(req.body.netSalary),
+    userId: profile.userId,
+    tenantId,
+  };
 
-    // Upsert works because `userId` is @unique on the Offer model
-    const upsertedOffer = await prisma.offer.upsert({
-      where: {
-        userId: userId,
+  const upsertedOffer = await prisma.offer.upsert({
+    where: { userId: profile.userId },
+    update: offerData,
+    create: offerData,
+  });
+
+  // 3️⃣ Check if Keycloak identity already exists
+  const existingIdentity: any = await prisma.externalIdentity.findFirst({
+    where: {
+      userId: profile.userId,
+      provider: "keycloak",
+    },
+  });
+
+  if (!existingIdentity) {
+    // 4️⃣ Create Keycloak user
+    const kcUser: any = await createKeycloakUser(tenantId, {
+      email: userEmail,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+    });
+
+    // 5️⃣ Assign roles (BUSINESS + TENANT)
+await assignRealmRole(
+  tenantId,
+  kcUser.id,
+  profile.accessRole,
+);
+
+    // 6️⃣ Persist mapping
+    await prisma.externalIdentity.create({
+      data: {
+        provider: "keycloak",
+        subject: kcUser.id,
+        email: userEmail,
+        tenantId,
+        userId: profile.userId,
       },
-      update: offerData,
-      create: offerData,
     });
-
-    // call the keyclock to create the employee
-
-    // const keycloakUserId = await createKeycloakUser({
-    //   email: profile.personalEmail || "",
-    //   firstName: profile.firstName,
-    //   lastName: profile.lastName,
-    //   designation: profile.designation,
-    //   tenantId: tenantId,
-    // });
-
-    // await prisma.externalIdentity.upsert({
-    //   where: {
-    //     email: profile.personalEmail || "",
-    //   },
-    //   update: {
-    //     provider: "keycloak",
-    //     subject: keycloakUserId.keycloakUserId,
-    //     tenantId: tenantId,
-    //     email: profile.personalEmail || "",
-    //   },
-    //   create: {
-    //     userId: userId,
-    //     provider: "keycloak",
-    //     subject: keycloakUserId.keycloakUserId,
-    //     tenantId: tenantId,
-    //     email: profile.personalEmail || "",
-    //   },
-    // });
-
-    res.status(201).json({
-      message: "Offer details saved successfully.",
-      offer: upsertedOffer,
-    });
-  } catch (error) {
-    console.error("Failed to save offer details:", error);
-    res.status(500).json({ message: "Internal server error" });
   }
+
+  return res.status(201).json({
+    message: "Offer saved & employee provisioned successfully.",
+    offer: upsertedOffer,
+  });
 });
+
 
 /**
  * --- UPDATED WITH MANUAL UPSERT ---
@@ -846,9 +970,8 @@ router.get("/logs", protect, async (req, res) => {
     for (const record of dailyRecords) {
       const employeeId =
         record.user?.employeeProfile?.employeeId ?? "N/A";
-      const employeeName = `${record.user?.employeeProfile?.firstName ?? ""} ${
-        record.user?.employeeProfile?.lastName ?? ""
-      }`.trim();
+      const employeeName = `${record.user?.employeeProfile?.firstName ?? ""} ${record.user?.employeeProfile?.lastName ?? ""
+        }`.trim();
 
       // dailyStatus: the DB field that should be trusted by frontend
       const dailyStatus = record.status ?? "UNKNOWN";
@@ -1198,9 +1321,8 @@ router.get("/payrollData", protect, async (req, res) => {
         id: item.userId, // Use userId as the unique key for the list
         employeeId: item.user.employeeProfile?.employeeId || "N/A",
         name:
-          `${item.user.employeeProfile?.firstName || ""} ${
-            item.user.employeeProfile?.lastName || ""
-          }`.trim() || "N/A",
+          `${item.user.employeeProfile?.firstName || ""} ${item.user.employeeProfile?.lastName || ""
+            }`.trim() || "N/A",
         designation: item.user.employeeProfile?.designation || "N/A",
         basicSalary: item.basicSalary,
         hra: item.hra,
