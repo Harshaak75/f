@@ -120,6 +120,7 @@ export default function EmployeeOnboarding() {
   const [offer, setOffer] = useState<OfferPayload>(initialOffer);
   const [assets, setAssets] = useState(() => ({ ...initialAssets }));
 
+
   // per-step validity state (controls Next button)
   const [isStepValid, setIsStepValid] = useState(false);
 
@@ -149,6 +150,10 @@ export default function EmployeeOnboarding() {
       setLoading(false);
     }
   };
+  useEffect(() => {
+    // Documents step is optional → always valid
+    setIsStepValid(true);
+  }, [isStepValid]);
 
   // Enhanced handleNext: also prevents skipping when step invalid
   const handleNext = async () => {
@@ -197,10 +202,12 @@ export default function EmployeeOnboarding() {
       }
 
       // STEP 2 -> Upload multiple documents (batch)
+      // STEP 2 -> Upload multiple documents (optional)
       if (currentStep === 2) {
         if (!profileId) throw new Error("Profile not created yet.");
 
         const items: DocumentItem[] = [];
+
         docs.aadhar.forEach((f) =>
           items.push({ documentType: "Aadhar Card", file: f })
         );
@@ -214,12 +221,22 @@ export default function EmployeeOnboarding() {
           items.push({ documentType: "Education Certificates", file: f })
         );
 
-        await employeeFunctionalityService.saveDocumentMeta(profileId, items);
-        toast({
-          title: "Documents uploaded",
-          description: "All selected files were uploaded.",
-        });
+        // 🔑 KEY FIX: skip upload if no documents
+        if (items.length === 0) {
+          toast({
+            title: "Documents skipped",
+            description: "No documents were uploaded. You can add them later.",
+          });
+        } else {
+          await employeeFunctionalityService.saveDocumentMeta(profileId, items);
+
+          toast({
+            title: "Documents uploaded",
+            description: "All selected files were uploaded.",
+          });
+        }
       }
+
 
       // STEP 3 -> Save Offer
       if (currentStep === 3) {
@@ -510,7 +527,7 @@ function BasicInfoForm({
     },
   });
 
-  
+
 
   // sync validity up
   useEffect(() => {
@@ -816,7 +833,8 @@ function DocumentsForm({
     formState: { errors, isValid },
   } = useForm<DocsFormType>({
     resolver: zodResolver(documentsSchema),
-    mode: "onChange",
+    // mode: "onChange",
+    mode: "onTouched",
     defaultValues: {
       aadhar: docs.aadhar,
       pan: docs.pan,
@@ -1322,8 +1340,8 @@ function AssetsForm({
   });
 
   useEffect(() => {
-  trigger(); // 👈 force initial validation
-}, [trigger]);
+    trigger(); // 👈 force initial validation
+  }, [trigger]);
 
   // Inform parent about form validity
   useEffect(() => {

@@ -25,13 +25,19 @@ export const basicInfoSchema = z.object({
   accessRole: z.enum(["OPERATOR", "MANAGER", "PROJECT_MANAGER"]),
 });
 
-export const documentsSchema = z.object({
-  aadhar: z.array(z.any()).min(1, "Please upload Aadhar"),
-  pan: z.array(z.any()).min(1, "Please upload PAN"),
-  bank: z.array(z.any()).min(1, "Please upload Bank proof"),
-  education: z.array(z.any()).min(1, "Please upload Education docs"),
-});
+// export const documentsSchema = z.object({
+//   aadhar: z.array(z.any()).min(1, "Please upload Aadhar"),
+//   pan: z.array(z.any()).min(1, "Please upload PAN"),
+//   bank: z.array(z.any()).min(1, "Please upload Bank proof"),
+//   education: z.array(z.any()).min(1, "Please upload Education docs"),
+// });
 
+export const documentsSchema = z.object({
+  aadhar: z.array(z.any()).optional(),
+  pan: z.array(z.any()).optional(),
+  bank: z.array(z.any()).optional(),
+  education: z.array(z.any()).optional(),
+});
 export const offerSchema = z.object({
   roleTitle: z.string().min(1, "Role title is required"),
   annualCTC: z.string().min(1, "Annual CTC required"),

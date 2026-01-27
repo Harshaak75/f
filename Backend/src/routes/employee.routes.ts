@@ -557,11 +557,11 @@ router.post("/:profileId/offer", protect, async (req, res) => {
     });
 
     // 5️⃣ Assign roles (BUSINESS + TENANT)
-await assignRealmRole(
-  tenantId,
-  kcUser.id,
-  profile.accessRole,
-);
+    await assignRealmRole(
+      tenantId,
+      kcUser.id,
+      profile.accessRole,
+    );
 
     // 6️⃣ Persist mapping
     await prisma.externalIdentity.create({
