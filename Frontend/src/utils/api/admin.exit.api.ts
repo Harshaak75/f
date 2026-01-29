@@ -18,6 +18,7 @@ export type ExitCase = {
   noticePeriod: number;    // days
   status: string;          // e.g., "ACTIVE" | "PENDING_FNF" | "COMPLETED"
   clearanceProgress: number; // 0..100
+  fnfCompletedAt?: string | null;
 };
 
 export type ClearanceStatusCounts = {
@@ -31,6 +32,30 @@ export type ClearanceStatusCounts = {
 export const exitService = {
   getDashboardStats: async () => {
     const { data } = await apiClient.get<ExitDashboardStats>("/exit/dashboard-stats");
+    return data;
+  },
+  getClearanceTasks: async (exitCaseId: string) => {
+    const { data } = await apiClient.get<any[]>(`/exit/${exitCaseId}/clearance`);
+    return data;
+  },
+  approveClearance: async (taskId: string) => {
+    const { data } = await apiClient.post(`/exit/clearance/${taskId}/approve`);
+    return data;
+  },
+  completeFnf: async (exitCaseId: string, payload: any) => {
+    const { data } = await apiClient.post(
+      `/exit/${exitCaseId}/complete-fnf`,
+      payload
+    );
+    return data;
+  },
+  getPastExitCases: async (filters: any) => {
+    const params = new URLSearchParams(filters);
+    const res = await apiClient.get(`/exit/past?${params.toString()}`);
+    return res.data;
+  },
+  searchEmployees: async (q: string) => {
+    const { data } = await apiClient.get<any[]>(`/exit/employees/search?q=${q}`);
     return data;
   },
   getActiveExitCases: async () => {

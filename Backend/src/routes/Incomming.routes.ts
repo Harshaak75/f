@@ -61,7 +61,6 @@ router.post(
           },
         },
         update: {
-          status: AttendanceStatus.PRESENT,
           checkIn: new Date(checkInTime),
         },
         create: {
@@ -229,12 +228,12 @@ router.post(
       // 4. APPLY YOUR ATTENDANCE RULES
       let status: AttendanceStatus;
 
-      if (hoursWorked < 4.5) {
-        status = "ABSENT";
-      } else if (hoursWorked >= 4.5 && hoursWorked < 9) {
-        status = "HALF_DAY";
+      if (hoursWorked < 4) {
+        status = AttendanceStatus.ABSENT;
+      } else if (hoursWorked >= 4 && hoursWorked < 5.5) {
+        status = AttendanceStatus.HALF_DAY;
       } else {
-        status = "PRESENT";
+        status = AttendanceStatus.PRESENT; // >= 6 hours
       }
 
       // 5. Update record in DB

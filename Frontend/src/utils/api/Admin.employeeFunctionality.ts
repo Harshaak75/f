@@ -296,7 +296,7 @@ export const EmployeeDirectoryList = {
       `/employee/documents/${userId}`,
       payload
     );
-    return data.uploaded;
+    return data;
   },
 
   deleteDocument: async (documentId: string) => {

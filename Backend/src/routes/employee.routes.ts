@@ -11,6 +11,8 @@ import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import { createKeycloakUser } from "../services/keycloakUsers";
 import { assignRealmRole } from "../services/keycloakRoles";
+import { exportExcel } from "../utils/Exports/exportExcel.attendance";
+import { exportPDF } from "../utils/Exports/exportPDF.attendance";
 
 const router = express.Router();
 
@@ -705,7 +707,7 @@ router.get("/GetEmployeeDetails", protect, async (req, res) => {
 
       // 1. Get Profile (and user info)
       const myProfile = await prisma.employeeProfile.findFirst({
-        where: { userId: userId, tenantId: tenantId },
+        where: { userId: userId, tenantId: tenantId, isActive: true },
         include: { user: { select: { name: true, email: true, role: true } } },
       });
 
@@ -748,6 +750,7 @@ router.get("/GetEmployeeDetails", protect, async (req, res) => {
     const profiles = await prisma.employeeProfile.findMany({
       where: {
         tenantId: tenantId,
+        isActive: true,
       },
       include: {
         user: {
@@ -1300,6 +1303,7 @@ router.get("/payrollData", protect, async (req, res) => {
             user: {
               select: {
                 employeeProfile: {
+                  where: { isActive: true },
                   select: {
                     employeeId: true,
                     firstName: true,
@@ -1681,43 +1685,94 @@ router.put("/profile/employment/:profileId", protect, async (req, res) => {
   }
 });
 
-router.post("/documents/:userId", protect, async (req, res) => {
-  try {
-    const userId = req.params.userId;
+router.post(
+  "/documents/:userId",
+  protect,
+  multerUpload.single("file"), // 🔑 REQUIRED
+  async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { tenantId, role, userId: actorId } = req.user!;
+      const { documentType } = req.body;
+      const { id }: any = req.user?.userId;
+      if (!req.file) {
+        return res.status(400).json({ message: "File is required" });
+      }
 
-    const { documentType, fileName, storagePath } = req.body;
+      if (!documentType) {
+        return res.status(400).json({ message: "documentType is required" });
+      }
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+      // ✅ Verify employee exists
+      const employee = await prisma.employeeProfile.findFirst({
+        where: { id: userId, tenantId },
+      });
 
-    const uploaded = await prisma.documentUpload.create({
-      data: {
-        documentType,
-        fileName,
-        storagePath,
-        userId,
-        tenantId: user?.tenantId!,
-      },
-    });
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
 
-    if (!req.user) {
-      return res.status(401).json({ message: "Unauthorized" });
+      // 🔐 Build Supabase path (SAME as onboarding)
+      const ext = path.extname(req.file.originalname) || "";
+      const safeType = documentType.replace(/\s+/g, "_");
+
+      const storagePath = `tenants/${tenantId}/${userId}/${safeType}/${uuidv4()}${ext}`;
+
+      // ☁️ Upload to Supabase
+      const { data, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(storagePath, req.file.buffer, {
+          contentType: req.file.mimetype,
+          upsert: false,
+        });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const CurrentUserId = await prisma.employeeProfile.findFirst({
+        where: {
+          id: userId
+        },
+        select: {
+          userId: true
+        }
+      })
+
+      if (!CurrentUserId?.userId) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      // 💾 Save metadata
+      const uploaded = await prisma.documentUpload.create({
+        data: {
+          documentType,
+          fileName: req.file.originalname,
+          storagePath: data.path,
+          userId: CurrentUserId.userId,
+          tenantId,
+        },
+      });
+
+      // 🧾 Activity log
+      await prisma.activityLog.create({
+        data: {
+          action: "DOCUMENT_UPLOADED",
+          description: `Uploaded ${documentType}`,
+          tenantId,
+          performedById: actorId,
+          targetUserId: CurrentUserId.userId,
+        },
+      });
+
+      return res.status(201).json(uploaded);
+    } catch (err) {
+      console.error("HR document upload failed:", err);
+      return res.status(500).json({ message: "Upload failed" });
     }
-
-    await prisma.activityLog.create({
-      data: {
-        action: "DOCUMENT_UPLOADED",
-        description: `Uploaded document ${fileName}`,
-        tenantId: user?.tenantId!,
-        performedById: req.user.userId,
-        targetUserId: userId,
-      },
-    });
-
-    res.json({ message: "Document uploaded", uploaded });
-  } catch (err) {
-    res.status(500).json({ message: "Upload failed", error: err });
   }
-});
+);
+
 
 router.delete("/documents/:documentId", protect, async (req, res) => {
   try {
@@ -1873,5 +1928,75 @@ router.put("/offer/:userId", protect, async (req, res) => {
     res.status(500).json({ message: "Offer update failed", error: err });
   }
 });
+
+
+// get the attendance details for export
+
+const formatRows = (records: any[]) =>
+  records.map((r) => ({
+    employeeId: r.user.employeeProfile.employeeId,
+    name: `${r.user.employeeProfile.firstName} ${r.user.employeeProfile.lastName}`,
+    designation: r.user.employeeProfile.designation,
+    date: r.date.toISOString().split("T")[0],
+    checkIn: r.checkIn ? r.checkIn.toISOString().substring(11, 16) : "-",
+    checkOut: r.checkOut ? r.checkOut.toISOString().substring(11, 16) : "-",
+    hours: r.hoursWorked ?? "-",
+    status: r.status,
+  }));
+
+router.get("/attendance/export", protect, async (req, res) => {
+  const { tenantId, role } = req.user!;
+  if (role !== Role.ADMIN) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const { fromDate, toDate, employeeId, designation, format } = req.query;
+
+  if (!fromDate || !toDate || !format) {
+    return res.status(400).json({ message: "Missing required filters" });
+  }
+
+  const records = await prisma.attendanceRecord.findMany({
+    where: {
+      tenantId,
+      date: {
+        gte: new Date(fromDate as string),
+        lte: new Date(toDate as string),
+      },
+      ...(employeeId && {
+        user: {
+          employeeProfile: { employeeId: employeeId as string },
+        },
+      }),
+      ...(designation && {
+        user: {
+          employeeProfile: { designation: designation as string },
+        },
+      }),
+    },
+    include: {
+      user: {
+        select: {
+          employeeProfile: {
+            select: {
+              firstName: true,
+              lastName: true,
+              employeeId: true,
+              designation: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const rows = formatRows(records);
+
+  if (format === "excel") return exportExcel(rows, res);
+  if (format === "pdf") return exportPDF(rows, res);
+
+  res.status(400).json({ message: "Invalid format" });
+});
+
 
 export default router;

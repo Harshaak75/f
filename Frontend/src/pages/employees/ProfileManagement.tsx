@@ -6,6 +6,17 @@ import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "../../components/ui/alert-dialog";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -131,9 +142,8 @@ function Row({
     <div className={`grid grid-cols-12 items-center py-2 ${className}`}>
       <div className="col-span-7 text-sm text-muted-foreground">{label}</div>
       <div
-        className={`col-span-5 text-right tabular-nums ${
-          bold ? "font-semibold text-foreground text-base" : "text-sm"
-        } ${negative ? "text-destructive" : ""}`}
+        className={`col-span-5 text-right tabular-nums ${bold ? "font-semibold text-foreground text-base" : "text-sm"
+          } ${negative ? "text-destructive" : ""}`}
       >
         {value}
       </div>
@@ -169,6 +179,8 @@ function money(n?: number) {
     return `₹${n}`;
   }
 }
+
+const storageUrl = import.meta.env.VITE_STORAGE_URL;
 
 /* ---------- Main component ---------- */
 export default function ProfileManagement(): JSX.Element {
@@ -229,6 +241,7 @@ export default function ProfileManagement(): JSX.Element {
   // Compensation (offer)
   const [offerForm, setOfferForm] = useState<any>(null);
   const [offerSaving, setOfferSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -289,9 +302,8 @@ export default function ProfileManagement(): JSX.Element {
     return <div className="p-6 text-sm text-muted-foreground">No profile.</div>;
 
   const fullName =
-    `${selectedEmployee.firstName ?? ""} ${
-      selectedEmployee.lastName ?? ""
-    }`.trim() ||
+    `${selectedEmployee.firstName ?? ""} ${selectedEmployee.lastName ?? ""
+      }`.trim() ||
     selectedEmployee.user?.name ||
     "—";
 
@@ -375,67 +387,99 @@ export default function ProfileManagement(): JSX.Element {
   }
 
   async function handleUploadDocument() {
-    if (!selectedEmployee?.id) return;
-    if (!selectedFile || !docType) return;
+    if (!selectedEmployee?.id || !selectedFile || !docType) return;
 
     try {
+      setUploading(true);
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("documentType", docType);
 
-      const uploaded = await EmployeeDirectoryList.addDocument(
+      // 🔥 This is now the document itself
+      const uploadedDoc = await EmployeeDirectoryList.addDocument(
         selectedEmployee.id,
         formData
       );
 
+      // Extra safety (optional but good)
+      if (!uploadedDoc || !uploadedDoc.id) {
+        throw new Error("Invalid upload response");
+      }
+
       setSelectedEmployee((prev) =>
         prev
           ? {
-              ...prev,
-              documents: [...(prev.documents ?? []), uploaded],
-            }
+            ...prev,
+            documents: [...(prev.documents ?? []), uploadedDoc],
+          }
+          : prev
+      );
+
+      // reset UI state
+      setSelectedFile(null);
+      setDocType("");
+
+      // reset file input so same file can be selected again
+      const input = document.getElementById(
+        "doc-file-input"
+      ) as HTMLInputElement;
+      if (input) input.value = "";
+
+      toast({
+        title: "Document uploaded",
+        description: `${uploadedDoc.documentType} added successfully.`,
+      });
+    } catch (err: any) {
+      console.error("Upload error:", err);
+
+      toast({
+        title: "Upload failed",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Something went wrong",
+        variant: "destructive",
+      });
+    }
+    finally {
+      setUploading(false);
+    }
+  }
+
+
+
+  async function handleDeleteDocument(documentId: string) {
+    try {
+      await EmployeeDirectoryList.deleteDocument(documentId);
+
+      setSelectedEmployee((prev) =>
+        prev
+          ? {
+            ...prev,
+            documents: (prev.documents ?? []).filter(
+              (d) => d.id !== documentId
+            ),
+          }
           : prev
       );
 
       toast({
-        title: "Document uploaded",
-        description: `${docType} added successfully.`,
+        title: "Document deleted",
+        description: "The document has been permanently removed.",
       });
-
-      setSelectedFile(null);
-      setDocType("");
     } catch (err: any) {
       toast({
-        title: "Upload failed",
-        description: err?.response?.data?.message || "Something went wrong",
+        title: "Delete failed",
+        description:
+          err?.response?.data?.message ||
+          err?.message ||
+          "Something went wrong",
         variant: "destructive",
       });
     }
   }
 
-  async function handleDeleteDocument(documentId?: string) {
-    if (!documentId) return;
-    if (!window.confirm("Delete this document?")) return;
-    try {
-      await EmployeeDirectoryList.deleteDocument(documentId);
-      setSelectedEmployee((s) =>
-        s
-          ? ({
-              ...s,
-              documents: (s.documents ?? []).filter((d) => d.id !== documentId),
-            } as EmployeeCombined)
-          : s
-      );
-      toast({ title: "Deleted", description: "Document removed." });
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || "Delete failed.";
-      toast({
-        title: "Delete failed",
-        description: msg,
-        variant: "destructive",
-      });
-    }
-  }
+
 
   /* ---------- Assets (add / edit / delete) ---------- */
 
@@ -494,11 +538,11 @@ export default function ProfileManagement(): JSX.Element {
       setSelectedEmployee((s: any) =>
         s
           ? ({
-              ...s,
-              assets: assetsLocal.map((it: any) =>
-                it.id === assetEditId ? { ...it, ...updated } : it
-              ),
-            } as EmployeeCombined)
+            ...s,
+            assets: assetsLocal.map((it: any) =>
+              it.id === assetEditId ? { ...it, ...updated } : it
+            ),
+          } as EmployeeCombined)
           : s
       );
       toast({ title: "Saved", description: "Asset updated." });
@@ -525,9 +569,9 @@ export default function ProfileManagement(): JSX.Element {
       setSelectedEmployee((s) =>
         s
           ? ({
-              ...s,
-              assets: [...(s.assets ?? []), created],
-            } as EmployeeCombined)
+            ...s,
+            assets: [...(s.assets ?? []), created],
+          } as EmployeeCombined)
           : s
       );
       toast({ title: "Added", description: "Asset assigned." });
@@ -552,9 +596,9 @@ export default function ProfileManagement(): JSX.Element {
       setSelectedEmployee((s) =>
         s
           ? ({
-              ...s,
-              assets: (s.assets ?? []).filter((a) => a.id !== assetId),
-            } as EmployeeCombined)
+            ...s,
+            assets: (s.assets ?? []).filter((a) => a.id !== assetId),
+          } as EmployeeCombined)
           : s
       );
       toast({ title: "Deleted", description: "Asset removed." });
@@ -576,17 +620,17 @@ export default function ProfileManagement(): JSX.Element {
       selectedEmployee.offerLetter
         ? { ...selectedEmployee.offerLetter }
         : {
-            roleTitle: "",
-            annualCTC: 0,
-            basic: 0,
-            hra: 0,
-            da: 0,
-            specialAllowance: 0,
-            grossSalary: 0,
-            pfDeduction: 0,
-            tax: 0,
-            netSalary: 0,
-          }
+          roleTitle: "",
+          annualCTC: 0,
+          basic: 0,
+          hra: 0,
+          da: 0,
+          specialAllowance: 0,
+          grossSalary: 0,
+          pfDeduction: 0,
+          tax: 0,
+          netSalary: 0,
+        }
     );
     setEditSection("compensation");
   }
@@ -914,7 +958,12 @@ export default function ProfileManagement(): JSX.Element {
               onChange={(e) => {
                 const file = e.target.files?.[0] || null;
                 console.log("Selected file:", file); // DEBUG
+                console.log("docType:", docType);
                 setSelectedFile(file);
+
+                if (file) {
+                  setDocType(file.name.split(".")[0]);
+                }
               }}
             />
 
@@ -937,9 +986,9 @@ export default function ProfileManagement(): JSX.Element {
               {/* Upload */}
               <Button
                 onClick={handleUploadDocument}
-                disabled={!selectedFile || !docType}
+                disabled={!selectedFile || !docType || uploading}
               >
-                Upload
+                {uploading ? "Uploading..." : "Upload"}
               </Button>
             </div>
 
@@ -948,12 +997,50 @@ export default function ProfileManagement(): JSX.Element {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {(selectedEmployee.documents ?? []).map((doc) => (
                   <Card key={doc.id} className="p-4 relative">
+                    {/* Delete button */}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          disabled={uploading}
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 opacity-80 right-2 h-6 w-6"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </AlertDialogTrigger>
+
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>
+                            Delete document?
+                          </AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This action cannot be undone. The document will be permanently
+                            removed from the system.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>
+                            Cancel
+                          </AlertDialogCancel>
+                          <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            onClick={() => handleDeleteDocument(doc.id)}
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+
                     <FileText className="h-8 w-8 text-primary mb-2" />
                     <h4 className="font-medium">{doc.documentType}</h4>
                     <p className="text-sm text-muted-foreground mt-1 truncate">
                       {doc.fileName}
                     </p>
-                    <Button variant="outline" className="mt-3 w-full">
+                    <Button onClick={() => window.open(`${storageUrl}${doc.storagePath}`, '_blank')} variant="outline" className="mt-3 w-full">
                       View
                     </Button>
                   </Card>

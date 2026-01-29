@@ -118,9 +118,8 @@ const AttendanceTracker: React.FC<{ employeeId: string }> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div
-            className={`h-10 w-10 rounded-full flex items-center justify-center ${
-              isCheckedIn ? "bg-green-100" : "bg-red-100"
-            }`}
+            className={`h-10 w-10 rounded-full flex items-center justify-center ${isCheckedIn ? "bg-green-100" : "bg-red-100"
+              }`}
           >
             {isCheckedIn ? (
               <Check className="h-5 w-5 text-green-600" />
@@ -193,22 +192,45 @@ export default function EmployeeDashboard() {
     null
   );
 
+  const [surveys, setSurveys] = useState<any[]>([]);
+  const [surveyLoading, setSurveyLoading] = useState(false);
+
+  const loadSurveys = async () => {
+    try {
+      setSurveyLoading(true);
+      const data = await employeeService.getMySurveys(); // GET /api/surveys/me
+      setSurveys(data ?? []);
+    } catch (e: any) {
+      toast({
+        title: "Failed to load surveys",
+        description: e?.message ?? "Please try again",
+        variant: "destructive",
+      });
+    } finally {
+      setSurveyLoading(false);
+    }
+  };
+
+
+
   const balances = useMemo(() => leave?.balances ?? [], [leave]);
 
   const fetchAll = async () => {
     setRefreshing(true);
     try {
-      const [lv, anns, recs, pay] = await Promise.all([
+      const [lv, anns, recs, pay, srv] = await Promise.all([
         employeeService.getLeaveDashboard().catch(() => null),
         employeeService.getAnnouncements().catch(() => []),
         employeeService.getRecognitionFeed().catch(() => []),
         employeeService.getLatestPayslip().catch(() => null),
+        employeeService.getMySurveys().catch(() => []),
       ]);
 
       if (lv) setLeave(lv);
       setAnnouncements(anns ?? []);
       setRecognitions(recs ?? []);
       setLatestPayslip(pay);
+      setSurveys(srv ?? []);
 
       toast({ title: "Refreshed", description: "Dashboard data updated." });
     } catch (e: any) {
@@ -221,6 +243,7 @@ export default function EmployeeDashboard() {
       setRefreshing(false);
     }
   };
+
 
   useEffect(() => {
     fetchAll();
@@ -460,6 +483,42 @@ export default function EmployeeDashboard() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending Surveys</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-3">
+              {surveyLoading ? (
+                <p className="text-sm text-gray-500">Loading surveys...</p>
+              ) : surveys.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No surveys pending 🎉
+                </p>
+              ) : (
+                surveys.map((survey) => (
+                  <div
+                    key={survey.id}
+                    className="p-4 border rounded-lg flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="font-semibold text-gray-800">{survey.title}</p>
+                      <p className="text-xs text-gray-500">
+                        Due: {survey.dueDate ?? "N/A"}
+                      </p>
+                    </div>
+
+                    <Button size="sm" asChild>
+                      <Link to={`/employee/surveys/${survey.id}`}>
+                        Take Survey
+                      </Link>
+                    </Button>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
         </div>
       </div>
     </div>

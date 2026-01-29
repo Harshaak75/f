@@ -27,6 +27,11 @@ export const leaveService = {
     return data;
   },
 
+  async stats(): Promise<LeaveRequestDTO[]> {
+    const { data } = await apiClient.get<LeaveRequestDTO[]>("/admin/leave/stats");
+    return data;
+  },
+
   // matches your backend routes exactly
   async approve(id: string, adminNotes?: string) {
     const { data } = await apiClient.post(`/admin/${id}/approve`, {

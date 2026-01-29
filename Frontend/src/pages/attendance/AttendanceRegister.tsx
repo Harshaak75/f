@@ -35,6 +35,7 @@ import {
   EmployeeCombined,
   EmployeeDirectoryList,
 } from "../../utils/api/Admin.employeeFunctionality";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 
 type DailyRow = {
   profileId?: string; // from employees list (if available)
@@ -58,6 +59,13 @@ export default function AttendanceRegister() {
 
   const [logs, setLogs] = useState<AttendanceLog[]>([]);
   const [employees, setEmployees] = useState<EmployeeCombined[]>([]);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [formatOpen, setFormatOpen] = useState(false);
+
+  const [fromDate, setFromDate] = useState<Date | undefined>();
+  const [toDate, setToDate] = useState<Date | undefined>();
+  const [selectedEmployee, setSelectedEmployee] = useState<string>("all");
+  const [selectedDesignation, setSelectedDesignation] = useState<string>("all");
 
   // Initial fetch: logs + employees
   useEffect(() => {
@@ -100,110 +108,110 @@ export default function AttendanceRegister() {
   }, [employees]);
 
   // Compute per-employee summary for the selected day
-const dailyRows: DailyRow[] = useMemo(() => {
-  if (!logs?.length) return [];
+  const dailyRows: DailyRow[] = useMemo(() => {
+    if (!logs?.length) return [];
 
-  const dayStr = format(date, "yyyy-MM-dd");
+    const dayStr = format(date, "yyyy-MM-dd");
 
-  // Group logs by employeeId
-  const grouped = new Map<string, AttendanceLog[]>();
+    // Group logs by employeeId
+    const grouped = new Map<string, AttendanceLog[]>();
 
-  for (const log of logs) {
-    const ts = new Date(log.timestamp);
-    const tsStr = format(ts, "yyyy-MM-dd");
-    if (tsStr !== dayStr) continue;
+    for (const log of logs) {
+      const ts = new Date(log.timestamp);
+      const tsStr = format(ts, "yyyy-MM-dd");
+      if (tsStr !== dayStr) continue;
 
-    const key = log.employeeId || "UNKNOWN";
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(log);
-  }
-
-  // Include all employees (even those with no logs)
-  const publicEmployeeIds = new Set<string>();
-  employees.forEach((e) => {
-    if (e.employeeId) publicEmployeeIds.add(e.employeeId);
-  });
-  for (const k of grouped.keys()) publicEmployeeIds.add(k);
-
-  const rows: DailyRow[] = [];
-
-  for (const empCode of publicEmployeeIds) {
-    const evs: any = grouped.get(empCode) || [];
-
-    // 👉 Read backend authoritative status (MOST IMPORTANT)
-    const backendStatus = evs[0]?.dailyStatus || "ABSENT";
-
-    let status: DailyRow["status"];
-    if (backendStatus === "PRESENT") status = "Present";
-    else if (backendStatus === "HALF_DAY") status = "Half Day";
-    else if (backendStatus === "LEAVE") status = "On Leave";
-    else status = "Absent";
-
-    // --------------------------------------------------------------------------------
-    // Check-in & Check-out (just for DISPLAY, NOT for status calculation anymore)
-    // --------------------------------------------------------------------------------
-    const checkIns = evs
-      .filter((e: any) => e.action === "CHECK_IN")
-      .map((e: any) => new Date(e.timestamp));
-
-    const checkOuts = evs
-      .filter((e: any) => e.action === "CHECK_OUT")
-      .map((e: any) => new Date(e.timestamp));
-
-    let checkInStr: string | undefined;
-    let checkOutStr: string | undefined;
-    let workHours: number | undefined;
-
-    if (checkIns.length) {
-      const earliestIn = new Date(
-        Math.min(...checkIns.map((d: any) => d.getTime()))
-      );
-      checkInStr = format(earliestIn, "HH:mm");
+      const key = log.employeeId || "UNKNOWN";
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key)!.push(log);
     }
 
-    if (checkOuts.length) {
-      const latestOut = new Date(
-        Math.max(...checkOuts.map((d: any) => d.getTime()))
-      );
-      checkOutStr = format(latestOut, "HH:mm");
-    }
-
-    // Optional: Compute hours for UI display only
-    if (checkInStr && checkOutStr) {
-      const inT = new Date(`${dayStr}T${checkInStr}:00`);
-      const outT = new Date(`${dayStr}T${checkOutStr}:00`);
-      const diff =
-        (outT.getTime() - inT.getTime()) / (1000 * 60 * 60);
-      workHours = Math.round(diff * 10) / 10;
-    }
-
-    // --------------------------------------------------------------------------------
-    // Fill metadata
-    // --------------------------------------------------------------------------------
-    const meta = empByPublicId.get(empCode);
-    const fullName =
-      `${meta?.firstName ?? ""} ${meta?.lastName ?? ""}`.trim() ||
-      meta?.user?.name ||
-      evs[0]?.employeeName ||
-      "—";
-
-    rows.push({
-      profileId: meta?.id,
-      userId: meta?.userId,
-      employeeId: empCode,
-      name: fullName,
-      employeeType: meta?.employeeType ?? null,
-      designation: meta?.designation ?? null,
-      checkIn: checkInStr,
-      checkOut: checkOutStr,
-      workHours,
-      status, // 👉 Using backend status now
+    // Include all employees (even those with no logs)
+    const publicEmployeeIds = new Set<string>();
+    employees.forEach((e) => {
+      if (e.employeeId) publicEmployeeIds.add(e.employeeId);
     });
-  }
+    for (const k of grouped.keys()) publicEmployeeIds.add(k);
 
-  rows.sort((a, b) => a.name.localeCompare(b.name));
-  return rows;
-}, [logs, employees, empByPublicId, date]);
+    const rows: DailyRow[] = [];
+
+    for (const empCode of publicEmployeeIds) {
+      const evs: any = grouped.get(empCode) || [];
+
+      // 👉 Read backend authoritative status (MOST IMPORTANT)
+      const backendStatus = evs[0]?.dailyStatus || "ABSENT";
+
+      let status: DailyRow["status"];
+      if (backendStatus === "PRESENT") status = "Present";
+      else if (backendStatus === "HALF_DAY") status = "Half Day";
+      else if (backendStatus === "LEAVE") status = "On Leave";
+      else status = "Absent";
+
+      // --------------------------------------------------------------------------------
+      // Check-in & Check-out (just for DISPLAY, NOT for status calculation anymore)
+      // --------------------------------------------------------------------------------
+      const checkIns = evs
+        .filter((e: any) => e.action === "CHECK_IN")
+        .map((e: any) => new Date(e.timestamp));
+
+      const checkOuts = evs
+        .filter((e: any) => e.action === "CHECK_OUT")
+        .map((e: any) => new Date(e.timestamp));
+
+      let checkInStr: string | undefined;
+      let checkOutStr: string | undefined;
+      let workHours: number | undefined;
+
+      if (checkIns.length) {
+        const earliestIn = new Date(
+          Math.min(...checkIns.map((d: any) => d.getTime()))
+        );
+        checkInStr = format(earliestIn, "HH:mm");
+      }
+
+      if (checkOuts.length) {
+        const latestOut = new Date(
+          Math.max(...checkOuts.map((d: any) => d.getTime()))
+        );
+        checkOutStr = format(latestOut, "HH:mm");
+      }
+
+      // Optional: Compute hours for UI display only
+      if (checkInStr && checkOutStr) {
+        const inT = new Date(`${dayStr}T${checkInStr}:00`);
+        const outT = new Date(`${dayStr}T${checkOutStr}:00`);
+        const diff =
+          (outT.getTime() - inT.getTime()) / (1000 * 60 * 60);
+        workHours = Math.round(diff * 10) / 10;
+      }
+
+      // --------------------------------------------------------------------------------
+      // Fill metadata
+      // --------------------------------------------------------------------------------
+      const meta = empByPublicId.get(empCode);
+      const fullName =
+        `${meta?.firstName ?? ""} ${meta?.lastName ?? ""}`.trim() ||
+        meta?.user?.name ||
+        evs[0]?.employeeName ||
+        "—";
+
+      rows.push({
+        profileId: meta?.id,
+        userId: meta?.userId,
+        employeeId: empCode,
+        name: fullName,
+        employeeType: meta?.employeeType ?? null,
+        designation: meta?.designation ?? null,
+        checkIn: checkInStr,
+        checkOut: checkOutStr,
+        workHours,
+        status, // 👉 Using backend status now
+      });
+    }
+
+    rows.sort((a, b) => a.name.localeCompare(b.name));
+    return rows;
+  }, [logs, employees, empByPublicId, date]);
 
 
   // Unique employee types for filter
@@ -212,6 +220,40 @@ const dailyRows: DailyRow[] = useMemo(() => {
     employees.forEach((e) => e.employeeType && s.add(e.employeeType));
     return Array.from(s).sort();
   }, [employees]);
+
+
+  const handleExport = async (fileFormat: "pdf" | "excel") => {
+    if (!fromDate || !toDate) {
+      alert("Please select date range");
+      return;
+    }
+
+    const params = new URLSearchParams({
+      fromDate: format(fromDate, "yyyy-MM-dd"),
+      toDate: format(toDate, "yyyy-MM-dd"),
+      format: fileFormat,
+    });
+
+    if (selectedEmployee !== "all") {
+      params.append("employeeId", selectedEmployee);
+    }
+
+    if (selectedDesignation !== "all") {
+      params.append("designation", selectedDesignation);
+    }
+
+    const url = `${import.meta.env.VITE_API_URL}/employee/attendance/export?${params.toString()}`;
+
+    window.open(url, "_blank");
+
+    setFormatOpen(false);
+    setExportOpen(false);
+    setFromDate(undefined);
+    setToDate(undefined);
+    setSelectedEmployee("all");
+    setSelectedDesignation("all");
+  };
+
 
   // Client-side filters
   const filteredRows = useMemo(() => {
@@ -286,10 +328,11 @@ const dailyRows: DailyRow[] = useMemo(() => {
             Track daily attendance records
           </p>
         </div>
-        <Button>
+        <Button onClick={() => setExportOpen(true)}>
           <Download className="mr-2 h-4 w-4" />
           Export Report
         </Button>
+
       </div>
 
       <div className="grid grid-cols-4 gap-4">
@@ -394,6 +437,124 @@ const dailyRows: DailyRow[] = useMemo(() => {
           </TableBody>
         </Table>
       </Card>
+
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Export Attendance</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Date Range */}
+            <div className="grid grid-cols-2 gap-4">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline">
+                    {fromDate ? format(fromDate, "PPP") : "From Date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0">
+                  <Calendar
+                    mode="single"
+                    selected={fromDate}
+                    onSelect={setFromDate}
+                  />
+                </PopoverContent>
+              </Popover>
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline">
+                    {toDate ? format(toDate, "PPP") : "To Date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0">
+                  <Calendar
+                    mode="single"
+                    selected={toDate}
+                    onSelect={setToDate}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Employee */}
+            <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+              <SelectTrigger>
+                <SelectValue placeholder="Employee" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Employees</SelectItem>
+                {employees?.length > 0 &&
+                  employees.map((e) => (
+                    <SelectItem key={e.employeeId} value={e.employeeId!}>
+                      {e.firstName} {e.lastName} ({e.employeeId})
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+
+            {/* Designation */}
+            <Select
+              value={selectedDesignation}
+              onValueChange={setSelectedDesignation}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Designation" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Designations</SelectItem>
+                {[...new Set(employees.map((e) => e.designation).filter(Boolean))].map(
+                  (d) => (
+                    <SelectItem key={d} value={d!}>
+                      {d}
+                    </SelectItem>
+                  )
+                )}
+              </SelectContent>
+            </Select>
+
+            <Button
+              className="w-full"
+              disabled={!fromDate || !toDate}
+              onClick={() => {
+                setExportOpen(false);
+                setFormatOpen(true);
+              }}
+            >
+              Apply
+            </Button>
+
+          </div>
+        </DialogContent>
+      </Dialog>
+
+
+      <Dialog open={formatOpen} onOpenChange={setFormatOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Download As</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex gap-4">
+            <Button
+              className="flex-1"
+              onClick={() => handleExport("pdf")}
+            >
+              PDF
+            </Button>
+
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => handleExport("excel")}
+            >
+              Excel
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

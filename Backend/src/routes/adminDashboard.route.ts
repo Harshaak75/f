@@ -13,11 +13,11 @@ router.get("/headcount", protect, async (req, res) => {
     const tenantId = req.user?.tenantId;
 
     const total = await prisma.employeeProfile.count({
-      where: { tenantId },
+      where: { tenantId, isActive: true },
     });
 
     const active = await prisma.user.count({
-      where: { tenantId, role: "EMPLOYEE" },
+      where: { tenantId, role: "EMPLOYEE", isActive: true },
     });
 
     res.json({ total, active });

@@ -43,7 +43,7 @@ router.get('/', protect, async (req, res) => {
         user: {
           select: {
             employeeProfile: {
-              select: { firstName: true, lastName: true, employeeId: true },
+              select: { firstName: true, lastName: true, employeeId: true, designation: true },
             },
           },
         },
@@ -81,7 +81,7 @@ router.get('/', protect, async (req, res) => {
           employeeName: `${request.user.employeeProfile?.firstName || ''} ${
             request.user.employeeProfile?.lastName || ''
           }`.trim(),
-          department: "N/A", // TODO: Add department to EmployeeProfile
+          department: request.user.employeeProfile?.designation || 'N/A',
           leaveType: request.policy.name,
           startDate: request.startDate.toISOString().split('T')[0],
           endDate: request.endDate.toISOString().split('T')[0],
@@ -107,6 +107,37 @@ router.get('/', protect, async (req, res) => {
     res.status(500).json({ message: 'Internal server error' });
   }
 });
+
+
+router.get("/leave/stats", protect, async (req, res) => {
+  const { tenantId } = req.user!;
+
+  try {
+    const grouped = await prisma.leaveRequest.groupBy({
+      by: ["status"],
+      where: { tenantId },
+      _count: { status: true },
+    });
+
+    const stats = {
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+    };
+
+    for (const row of grouped) {
+      if (row.status === "PENDING") stats.pending = row._count.status;
+      if (row.status === "APPROVED") stats.approved = row._count.status;
+      if (row.status === "REJECTED") stats.rejected = row._count.status;
+    }
+
+    res.json(stats);
+  } catch (err) {
+    console.error("Leave stats error:", err);
+    res.status(500).json({ message: "Failed to fetch leave stats" });
+  }
+});
+
 
 // ====================================================================
 // ADMIN: Approve a Leave Request

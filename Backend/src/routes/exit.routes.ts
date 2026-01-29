@@ -7,6 +7,8 @@ import {
   ClearanceStatus,
   ClearanceDepartment,
 } from "@prisma/client";
+import PDFDocument from "pdfkit";
+import ExcelJS from "exceljs";
 
 const router = Router();
 
@@ -99,9 +101,8 @@ router.get("/", protect, async (req, res) => {
 
       return {
         id: c.id,
-        employee: `${c.user.employeeProfile?.firstName || ""} ${
-          c.user.employeeProfile?.lastName || ""
-        }`.trim(),
+        employee: `${c.user.employeeProfile?.firstName || ""} ${c.user.employeeProfile?.lastName || ""
+          }`.trim(),
         department: c.user.employeeProfile?.designation || "N/A",
         resignationDate: c.resignationDate.toISOString().split("T")[0],
         lastDay: c.lastDay.toISOString().split("T")[0],
@@ -290,6 +291,368 @@ router.post("/clearance/:taskId/approve", protect, async (req, res) => {
     console.error("Failed to approve clearance task:", error);
     res.status(500).json({ message: "Internal server error" });
   }
+});
+
+// exployee search
+
+router.get("/employees/search", protect, async (req, res) => {
+  const { tenantId, role } = req.user!;
+  const { q } = req.query;
+
+  if (role !== Role.ADMIN) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  if (!q || typeof q !== "string") {
+    return res.json([]);
+  }
+
+  const employees = await prisma.employeeProfile.findMany({
+    where: {
+      tenantId,
+      isActive: true,
+      OR: [
+        { firstName: { contains: q, mode: "insensitive" } },
+        { lastName: { contains: q, mode: "insensitive" } },
+        { employeeId: { contains: q, mode: "insensitive" } },
+      ],
+    },
+    take: 10,
+    include: {
+      user: { select: { id: true } },
+    },
+  });
+
+  res.json(
+    employees.map((e) => ({
+      userId: e.userId,
+      employeeId: e.employeeId,
+      name: `${e.firstName} ${e.lastName}`,
+      designation: e.designation,
+    }))
+  );
+});
+
+router.get("/:exitCaseId/clearance", protect, async (req, res) => {
+  const { exitCaseId } = req.params;
+  const { tenantId, role } = req.user!;
+
+  if (role !== Role.ADMIN) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const tasks = await prisma.clearanceTask.findMany({
+    where: { exitCaseId, tenantId },
+    orderBy: { department: "asc" },
+  });
+
+  res.json(tasks);
+});
+
+
+// ====================================================================
+// ADMIN: Complete Full & Final Settlement
+// ====================================================================
+router.post("/:exitCaseId/complete-fnf", protect, async (req, res) => {
+  const { tenantId, role } = req.user!;
+  const { exitCaseId } = req.params;
+
+  const {
+    salaryPayable,
+    leaveEncashment,
+    deductions,
+    remarks,
+  } = req.body;
+
+  if (role !== Role.ADMIN) {
+    return res.status(403).json({ message: "Forbidden." });
+  }
+
+  try {
+    const exitCase = await prisma.exitCase.findFirst({
+      where: { id: exitCaseId, tenantId },
+    });
+
+    if (!exitCase) {
+      return res.status(404).json({ message: "Exit case not found." });
+    }
+
+    if (exitCase.status !== ExitStatus.PENDING_FNF) {
+      return res
+        .status(400)
+        .json({ message: "Exit case is not ready for F&F." });
+    }
+
+    await prisma.exitCase.update({
+      where: { id: exitCaseId },
+      data: {
+        status: ExitStatus.COMPLETED,
+        fnfCompletedAt: new Date(),
+        fnfSummary: {
+          salaryPayable,
+          leaveEncashment,
+          deductions,
+          remarks,
+        },
+      },
+    });
+
+    await prisma.employeeProfile.update({
+      where: { userId: exitCase.userId },
+      data: { isActive: false },
+    });
+
+    await prisma.user.update({
+      where: { id: exitCase.userId },
+      data: { isActive: false },
+    });
+
+    res.status(200).json({ message: "F&F completed successfully." });
+  } catch (error) {
+    console.error("F&F completion failed:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
+/**
+ * @route   GET /api/exit/past
+ * @desc    Get completed exit cases (audit view)
+ * @access  Admin
+ */
+router.get("/past", protect, async (req, res) => {
+  const { tenantId, role } = req.user!;
+  const { search, fromDate, toDate, department } = req.query;
+
+  if (role !== Role.ADMIN) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  try {
+    const where: any = {
+      tenantId,
+      status: ExitStatus.COMPLETED,
+    };
+
+    // 🔍 Search (name OR exit id)
+    if (search) {
+      where.OR = [
+        {
+          user: {
+            employeeProfile: {
+              firstName: { contains: String(search), mode: "insensitive" },
+            },
+          },
+        },
+        {
+          user: {
+            employeeProfile: {
+              lastName: { contains: String(search), mode: "insensitive" },
+            },
+          },
+        },
+        {
+          id: { contains: String(search) },
+        },
+      ];
+    }
+
+    // 📅 Date range filter (last working day)
+    if (fromDate || toDate) {
+      where.lastDay = {};
+      if (fromDate) where.lastDay.gte = new Date(String(fromDate));
+      if (toDate) where.lastDay.lte = new Date(String(toDate));
+    }
+
+    // 🏢 Department filter (merge-safe)
+    if (department && department !== "all") {
+      where.user = {
+        ...(where.user || {}),
+        employeeProfile: {
+          designation: String(department),
+        },
+      };
+    }
+
+    const exits = await prisma.exitCase.findMany({
+      where,
+      include: {
+        user: {
+          include: {
+            employeeProfile: true,
+          },
+        },
+        clearanceTasks: true, // audit reference
+      },
+      orderBy: {
+        completedAt: "desc",
+      },
+    });
+
+    // 🎯 Format for frontend (audit-safe, read-only)
+    const formatted = exits.map((c) => ({
+      id: c.id,
+      employee: `${c.user.employeeProfile?.firstName || ""} ${c.user.employeeProfile?.lastName || ""
+        }`.trim(),
+      department: c.user.employeeProfile?.designation || "N/A",
+      resignationDate: c.resignationDate.toISOString().split("T")[0],
+      lastDay: c.lastDay.toISOString().split("T")[0],
+      fnfCompletedAt: c.fnfCompletedAt
+        ? c.fnfCompletedAt.toISOString().split("T")[0]
+        : null,
+      completedAt: c.completedAt
+        ? c.completedAt.toISOString().split("T")[0]
+        : null,
+      status: c.status,
+    }));
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    console.error("Failed to fetch past exits:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+
+router.get("/past/export/excel", protect, async (req, res) => {
+  const { tenantId, role } = req.user!;
+  const { search, fromDate, toDate, department } = req.query;
+
+  if (role !== Role.ADMIN) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const where: any = {
+    tenantId,
+    status: ExitStatus.COMPLETED,
+  };
+
+  if (search) {
+    where.OR = [
+      {
+        user: {
+          employeeProfile: {
+            firstName: { contains: String(search), mode: "insensitive" },
+          },
+        },
+      },
+      {
+        user: {
+          employeeProfile: {
+            lastName: { contains: String(search), mode: "insensitive" },
+          },
+        },
+      },
+      { id: { contains: String(search) } },
+    ];
+  }
+
+  if (department && department !== "all") {
+    where.user = {
+      employeeProfile: { designation: String(department) },
+    };
+  }
+
+  if (fromDate || toDate) {
+    where.lastDay = {};
+    if (fromDate) where.lastDay.gte = new Date(String(fromDate));
+    if (toDate) where.lastDay.lte = new Date(String(toDate));
+  }
+
+  const exits = await prisma.exitCase.findMany({
+    where,
+    include: {
+      user: { include: { employeeProfile: true } },
+    },
+    orderBy: { completedAt: "desc" },
+  });
+
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Past Exits");
+
+  sheet.columns = [
+    { header: "Exit ID", key: "id", width: 30 },
+    { header: "Employee", key: "employee", width: 25 },
+    { header: "Department", key: "department", width: 20 },
+    { header: "Resignation Date", key: "resignationDate", width: 15 },
+    { header: "Last Working Day", key: "lastDay", width: 15 },
+    { header: "F&F Completed", key: "fnfCompletedAt", width: 15 },
+    { header: "Completed At", key: "completedAt", width: 15 },
+  ];
+
+  exits.forEach((c) => {
+    sheet.addRow({
+      id: c.id,
+      employee: `${c.user.employeeProfile?.firstName || ""} ${c.user.employeeProfile?.lastName || ""
+        }`,
+      department: c.user.employeeProfile?.designation || "N/A",
+      resignationDate: c.resignationDate.toISOString().split("T")[0],
+      lastDay: c.lastDay.toISOString().split("T")[0],
+      fnfCompletedAt: c.fnfCompletedAt
+        ? c.fnfCompletedAt.toISOString().split("T")[0]
+        : "",
+      completedAt: c.completedAt
+        ? c.completedAt.toISOString().split("T")[0]
+        : "",
+    });
+  });
+
+  res.setHeader(
+    "Content-Disposition",
+    "attachment; filename=past-exits.xlsx"
+  );
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+
+  await workbook.xlsx.write(res);
+  res.end();
+});
+
+router.get("/past/export/pdf", protect, async (req, res) => {
+  const { tenantId, role } = req.user!;
+
+  if (role !== Role.ADMIN) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  const exits = await prisma.exitCase.findMany({
+    where: {
+      tenantId,
+      status: ExitStatus.COMPLETED,
+    },
+    include: {
+      user: { include: { employeeProfile: true } },
+    },
+    orderBy: { completedAt: "desc" },
+  });
+
+  const doc = new PDFDocument({ margin: 30, size: "A4" });
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    "attachment; filename=past-exits.pdf"
+  );
+
+  doc.pipe(res);
+
+  doc.fontSize(18).text("Past Exit Audit Report", { align: "center" });
+  doc.moveDown();
+
+  exits.forEach((c) => {
+    doc
+      .fontSize(10)
+      .text(`Employee: ${c.user.employeeProfile?.firstName} ${c.user.employeeProfile?.lastName}`)
+      .text(`Department: ${c.user.employeeProfile?.designation}`)
+      .text(`Exit ID: ${c.id}`)
+      .text(`Last Day: ${c.lastDay.toISOString().split("T")[0]}`)
+      .text(`Completed At: ${c.completedAt?.toISOString().split("T")[0]}`)
+      .moveDown();
+  });
+
+  doc.end();
 });
 
 export default router;

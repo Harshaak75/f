@@ -173,10 +173,6 @@ export default function GeoBiometricLogs() {
           <h1 className="text-3xl font-semibold text-foreground">Geo & Biometric Logs</h1>
           <p className="text-muted-foreground mt-1">Monitor attendance verification logs</p>
         </div>
-        <Button>
-          <Download className="mr-2 h-4 w-4" />
-          Export Logs
-        </Button>
       </div>
 
       <div className="grid grid-cols-4 gap-4">

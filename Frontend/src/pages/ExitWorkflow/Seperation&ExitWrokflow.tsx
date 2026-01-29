@@ -86,7 +86,7 @@ const CaseStatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const map: Record<string, { label: string; style: string }> = {
     ACTIVE: {
       label: "In Progress",
-      style: "bg-orange-100 text-orange-800 border-orange-300",
+      style: "bg-orange-100 hover:bg-orange-50 transition-colors text-orange-800 border-orange-300",
     },
     PENDING_FNF: {
       label: "Pending F&F",
@@ -117,10 +117,23 @@ export default function ExitWorkflowDashboard() {
   const [clearance, setClearance] = useState<ClearanceStatusCounts | null>(
     null
   );
+  const [approvingTaskId, setApprovingTaskId] = useState<string | null>(null);
 
   // UI state
   const [loading, setLoading] = useState(false);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
+  const [pastExits, setPastExits] = useState<ExitCase[]>([]);
+  const [pastLoading, setPastLoading] = useState(false);
+
+  const [pastFilters, setPastFilters] = useState({
+    search: "",
+    department: "all",
+    fromDate: "",
+    toDate: "",
+  });
+
 
   // Modal: Log resignation
   const [openCreate, setOpenCreate] = useState(false);
@@ -131,6 +144,55 @@ export default function ExitWorkflowDashboard() {
     lastDay: "",
     reason: "",
   });
+
+  const [employeeQuery, setEmployeeQuery] = useState("");
+  const [employeeResults, setEmployeeResults] = useState<any[]>([]);
+  const [selectedEmployee, setSelectedEmployee] = useState<any | null>(null);
+  const [openDetails, setOpenDetails] = useState(false);
+  const [activeExitCase, setActiveExitCase] = useState<ExitCase | null>(null);
+  const [clearanceTasks, setClearanceTasks] = useState<any[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+
+  const [fnfOpen, setFnfOpen] = useState(false);
+  const [fnfLoading, setFnfLoading] = useState(false);
+  const [activeFnfCase, setActiveFnfCase] = useState<ExitCase | null>(null);
+
+  const [fnfForm, setFnfForm] = useState({
+    salaryPayable: "",
+    leaveEncashment: "",
+    deductions: "",
+    remarks: "",
+  });
+
+  const exportExcel = () => {
+    const params = new URLSearchParams();
+
+    Object.entries(pastFilters).forEach(([key, value]) => {
+      if (value && value !== "all") {
+        params.append(key, value);
+      }
+    });
+
+    window.open(
+      `${import.meta.env.VITE_API_URL}/exit/past/export/excel?${params.toString()}`,
+      "_blank"
+    );
+  };
+
+  const exportPdf = () => {
+    const params = new URLSearchParams();
+
+    Object.entries(pastFilters).forEach(([key, value]) => {
+      if (value && value !== "all") {
+        params.append(key, value);
+      }
+    });
+
+    window.open(
+      `${import.meta.env.VITE_API_URL}/exit/past/export/pdf?${params.toString()}`,
+      "_blank"
+    );
+  };
 
   const loadAll = async () => {
     setLoading(true);
@@ -163,6 +225,12 @@ export default function ExitWorkflowDashboard() {
     }
   };
 
+
+  const netPay =
+    Number(fnfForm.salaryPayable || 0) +
+    Number(fnfForm.leaveEncashment || 0) -
+    Number(fnfForm.deductions || 0);
+
   useEffect(() => {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -172,13 +240,6 @@ export default function ExitWorkflowDashboard() {
   const headerActions = useMemo(
     () => (
       <div className="flex gap-3">
-        <Button
-          variant="outline"
-          className="text-gray-700 border-gray-300 hover:bg-gray-100 shadow-sm"
-        >
-          <TrendingUp className="mr-2 h-4 w-4" />
-          Analyze Exit Data
-        </Button>
         <Button
           variant="default"
           className="bg-orange-600 hover:bg-orange-700 shadow-md"
@@ -348,7 +409,16 @@ export default function ExitWorkflowDashboard() {
                 {cases.map((c) => (
                   <TableRow
                     key={c.id}
-                    className="hover:bg-orange-50/50 transition-colors"
+                    className="cursor-pointer hover:bg-orange-50"
+                    onClick={async () => {
+                      setActiveExitCase(c);
+                      setOpenDetails(true);
+                      setLoadingTasks(true);
+
+                      const tasks = await exitService.getClearanceTasks(c.id);
+                      setClearanceTasks(tasks);
+                      setLoadingTasks(false);
+                    }}
                   >
                     <TableCell className="font-medium text-gray-700">
                       {c.employee}
@@ -378,18 +448,44 @@ export default function ExitWorkflowDashboard() {
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-center">
+                    <TableCell className="text-center space-y-1">
                       <CaseStatusBadge status={c.status} />
+
+                      {c.status === "PENDING_FNF" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation(); // ⭐ THIS IS CRITICAL
+                            setActiveFnfCase(c);
+                            setFnfOpen(true);
+                          }}
+                        >
+                          Process F&F
+                        </Button>
+                      )}
                     </TableCell>
+
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           )}
 
-          <Button variant="link" className="mt-6 p-0 text-orange-600 h-auto">
+          <Button
+            variant="link"
+            className="mt-6 p-0 text-orange-600 h-auto"
+            onClick={async () => {
+              setPastOpen(true);
+              setPastLoading(true);
+              const data = await exitService.getPastExitCases({});
+              setPastExits(data);
+              setPastLoading(false);
+            }}
+          >
             View All Past Exits <Search className="ml-1 h-3 w-3" />
           </Button>
+
         </Card>
 
         {/* Side: No-Dues Clearance Status + Quick POSH info */}
@@ -434,13 +530,6 @@ export default function ExitWorkflowDashboard() {
                 />
               </div>
             )}
-
-            <Button
-              variant="outline"
-              className="w-full mt-6 justify-center text-blue-600 border-blue-300 hover:bg-blue-100"
-            >
-              Manage Clearance Workflow
-            </Button>
           </Card>
 
           <Card className="p-6 shadow-xl">
@@ -483,15 +572,49 @@ export default function ExitWorkflowDashboard() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <label className="text-sm text-gray-700 font-medium">
-                Employee (User ID)
+                Search by name or ID
               </label>
               <Input
-                value={form.userId}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, userId: e.target.value }))
-                }
-                placeholder="employee userId"
+                placeholder="Search employee by name or ID"
+                value={employeeQuery}
+                onChange={async (e) => {
+                  const q = e.target.value;
+                  setEmployeeQuery(q);
+
+                  if (q.length < 2) {
+                    setEmployeeResults([]);
+                    return;
+                  }
+
+                  const res = await exitService.searchEmployees(q);
+                  setEmployeeResults(res);
+                }}
               />
+
+              {employeeResults.length > 0 && (
+                <div className="border rounded-md mt-2 max-h-48 overflow-y-auto">
+                  {employeeResults.map((emp) => (
+                    <div
+                      key={emp.userId}
+                      className="p-2 hover:bg-gray-100 cursor-pointer"
+                      onClick={() => {
+                        setSelectedEmployee(emp);
+                        setForm((f) => ({ ...f, userId: emp.userId }));
+                        setEmployeeResults([]);
+                        setEmployeeQuery(
+                          `${emp.name} (${emp.employeeId})`
+                        );
+                      }}
+                    >
+                      <div className="font-medium">{emp.name}</div>
+                      <div className="text-xs text-gray-500">
+                        {emp.employeeId} · {emp.designation}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-sm text-gray-700 font-medium">
@@ -588,6 +711,333 @@ export default function ExitWorkflowDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={openDetails} onOpenChange={setOpenDetails}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Exit Case Details</DialogTitle>
+            <DialogDescription>
+              Case ID: {activeExitCase?.id}
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Employee Info */}
+          <div className="border rounded-md p-4 bg-gray-50">
+            <p className="font-medium">{activeExitCase?.employee}</p>
+            <p className="text-sm text-gray-500">
+              {activeExitCase?.department}
+            </p>
+            <p className="text-sm mt-1">
+              Status: <CaseStatusBadge status={activeExitCase?.status || ""} />
+            </p>
+          </div>
+
+          {/* Clearance Table */}
+          {loadingTasks ? (
+            <p className="text-sm text-gray-500">Loading clearance tasks…</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clearanceTasks.map((task) => (
+                  <TableRow key={task.id}>
+                    <TableCell>{task.department}</TableCell>
+                    <TableCell>
+                      <UiBadge
+                        variant="outline"
+                        className={
+                          task.status === "APPROVED"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-yellow-100 text-yellow-700"
+                        }
+                      >
+                        {task.status}
+                      </UiBadge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {task.status === "PENDING" && (
+                        <Button
+                          size="sm"
+                          disabled={approvingTaskId === task.id}
+                          onClick={async () => {
+                            try {
+                              setApprovingTaskId(task.id);
+
+                              await exitService.approveClearance(task.id);
+
+                              const refreshed =
+                                await exitService.getClearanceTasks(activeExitCase!.id);
+                              setClearanceTasks(refreshed);
+
+                              await loadAll(); // refresh dashboard
+                            } finally {
+                              setApprovingTaskId(null);
+                            }
+                          }}
+                        >
+                          {approvingTaskId === task.id ? (
+                            <>
+                              <Spinner className="mr-2" />
+                              Approving…
+                            </>
+                          ) : (
+                            "Approve"
+                          )}
+                        </Button>
+                      )}
+                    </TableCell>
+
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpenDetails(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={fnfOpen} onOpenChange={setFnfOpen}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Full & Final Settlement</DialogTitle>
+            <DialogDescription>
+              Complete settlement and close exit case
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="bg-gray-50 p-3 rounded-md text-sm">
+              <div className="font-medium">{activeFnfCase?.employee}</div>
+              <div className="text-gray-500">
+                Last Working Day: {activeFnfCase?.lastDay}
+              </div>
+            </div>
+            <Input
+              type="number"
+              placeholder="Salary Payable (₹)"
+              value={fnfForm.salaryPayable}
+              onChange={(e) =>
+                setFnfForm((f) => ({ ...f, salaryPayable: e.target.value }))
+              }
+            />
+
+            <Input
+              type="number"
+              placeholder="Leave Encashment (₹)"
+              value={fnfForm.leaveEncashment}
+              onChange={(e) =>
+                setFnfForm((f) => ({ ...f, leaveEncashment: e.target.value }))
+              }
+            />
+
+            <Input
+              type="number"
+              placeholder="Deductions (₹)"
+              value={fnfForm.deductions}
+              onChange={(e) =>
+                setFnfForm((f) => ({ ...f, deductions: e.target.value }))
+              }
+            />
+            <Textarea
+              placeholder="Remarks (e.g. Salary paid via bank on 30th Jan)"
+              value={fnfForm.remarks}
+              onChange={(e) =>
+                setFnfForm((f) => ({ ...f, remarks: e.target.value }))
+              }
+            />
+
+            <div className="flex justify-between items-center bg-green-50 p-3 rounded-md">
+              <span className="text-sm font-medium text-green-700">
+                Net Payable
+              </span>
+              <span className="text-lg font-bold text-green-800">
+                ₹ {netPay}
+              </span>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              I confirm that all dues are settled and this exit case can be closed.
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFnfOpen(false)}>
+              Cancel
+            </Button>
+
+            <Button
+              disabled={!confirmed || fnfLoading}
+              onClick={async () => {
+                try {
+                  setFnfLoading(true);
+
+                  await exitService.completeFnf(
+                    activeFnfCase!.id,
+                    fnfForm
+                  );
+
+                  toast({
+                    title: "F&F Completed",
+                    description: "Exit case successfully closed.",
+                    variant: "success",
+                  });
+
+                  setFnfOpen(false);
+                  setFnfForm({
+                    salaryPayable: "",
+                    leaveEncashment: "",
+                    deductions: "",
+                    remarks: "",
+                  });
+
+                  await loadAll();
+                } catch (err: any) {
+                  toast({
+                    title: "Failed to complete F&F",
+                    description: err?.message,
+                    variant: "destructive",
+                  });
+                } finally {
+                  setFnfLoading(false);
+                }
+              }}
+            >
+              {fnfLoading ? "Processing..." : "Complete F&F"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pastOpen} onOpenChange={setPastOpen}>
+        <DialogContent className="max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>Exit History (Audit)</DialogTitle>
+            <DialogDescription>
+              Completed exit cases – read-only, exportable
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Filters */}
+          <Card className="p-4">
+            <div className="grid grid-cols-5 gap-3 pr-6">
+              <Input
+                placeholder="Search name / employee ID"
+                value={pastFilters.search}
+                onChange={(e) =>
+                  setPastFilters((f) => ({ ...f, search: e.target.value }))
+                }
+              />
+
+              <Input
+                type="date"
+                value={pastFilters.fromDate}
+                onChange={(e) =>
+                  setPastFilters((f) => ({ ...f, fromDate: e.target.value }))
+                }
+              />
+
+              <Input
+                type="date"
+                value={pastFilters.toDate}
+                onChange={(e) =>
+                  setPastFilters((f) => ({ ...f, toDate: e.target.value }))
+                }
+              />
+
+              <Button
+                onClick={async () => {
+                  setPastLoading(true);
+                  const data = await exitService.getPastExitCases(pastFilters);
+                  setPastExits(data);
+                  setPastLoading(false);
+                }}
+              >
+                Apply Filters
+              </Button>
+
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={exportExcel}>
+                  Export Excel
+                </Button>
+                <Button variant="outline" onClick={exportPdf}>Export PDF</Button>
+              </div>
+            </div>
+          </Card>
+
+          {/* Table */}
+          <div className="max-h-[60vh] overflow-y-auto mt-4">
+            {pastLoading ? (
+              <Skeleton className="h-40" />
+            ) : pastExits.length === 0 ? (
+              <p className="text-sm text-gray-500 p-4">No past exits found.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Employee ID</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Resigned</TableHead>
+                    <TableHead>Last Day</TableHead>
+                    <TableHead>F&F Completed</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {pastExits.map((c: any) => (
+                    <TableRow
+                      key={c.id}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => {
+                        setActiveExitCase(c);
+                        setOpenDetails(true);
+                        setPastOpen(false);
+                      }}
+                    >
+                      <TableCell className="font-medium">{c.employee}</TableCell>
+                      <TableCell>{c.id}</TableCell>
+                      <TableCell>{c.department}</TableCell>
+                      <TableCell>{c.resignationDate}</TableCell>
+                      <TableCell>{c.lastDay}</TableCell>
+                      <TableCell>{c.fnfCompletedAt || "-"}</TableCell>
+                      <TableCell>
+                        <UiBadge className="bg-green-100 text-green-700 border-green-300">
+                          Completed
+                        </UiBadge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPastOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
     </div>
   );
 }

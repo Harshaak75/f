@@ -90,12 +90,27 @@ export const employeeService = {
     return data as { message: string; recordId: string };
   },
 
+  getSurveyById: async (id: string) => {
+  const { data } = await apiClient.get(`/surveys/${id}`);
+  return data;
+},
+
+submitSurvey: async (id: string, payload: any) => {
+  const { data } = await apiClient.post(`/surveys/${id}/submit`, payload);
+  return data;
+},
+
   checkOut: async (employeeId: string, checkOutTime: string) => {
     const { data } = await apiClient.post(`/incoming/attendance/check-out`, {
       employeeId,
       checkOutTime,
     });
     return data as { message: string; record: AttendanceRecord };
+  },
+
+  getMySurveys: async () => {
+    const { data } = await apiClient.get("/surveys/me");
+    return data as any[];
   },
 
   getTodayAttendance : async() =>{

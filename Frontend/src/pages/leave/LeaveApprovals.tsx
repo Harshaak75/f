@@ -20,10 +20,16 @@ export default function LeaveApprovals() {
   const [requests, setRequests] = useState<LeaveRequestDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [stats, setStats] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+  });
+  type ActionType = "approve" | "reject" | null;
 
   const [selectedRequest, setSelectedRequest] = useState<LeaveRequestDTO | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<ActionType>(null);
   const [adminNotes, setAdminNotes] = useState(""); // NEW
 
   const fetchAll = async () => {
@@ -40,15 +46,16 @@ export default function LeaveApprovals() {
     }
   };
 
+  const fetchStats = async () => {
+    const res: any = await leaveService.stats();
+    setStats(res);
+  };
+
+
   useEffect(() => {
     fetchAll();
+    fetchStats();
   }, []);
-
-  const stats = useMemo(() => ({
-    pending: requests.filter((r) => r.status === "Pending").length,
-    approved: requests.filter((r) => r.status === "Approved").length,
-    rejected: requests.filter((r) => r.status === "Rejected").length,
-  }), [requests]);
 
   const openDialog = (req: LeaveRequestDTO) => {
     setSelectedRequest(req);
@@ -58,8 +65,9 @@ export default function LeaveApprovals() {
 
   const handleApprove = async (requestId: string) => {
     try {
-      setActionLoading(true);
+      setActionLoading("approve");
       await leaveService.approve(requestId, adminNotes || undefined);
+      await fetchStats();
       // optimistic update
       setRequests((prev) => prev.map((r) => (r.id === requestId ? { ...r, status: "Approved" } : r)));
       toast({ title: "Leave Approved", description: "The leave request has been approved." });
@@ -68,7 +76,7 @@ export default function LeaveApprovals() {
       const msg = e?.response?.data?.message || e?.message || "Approval failed.";
       toast({ title: "Action failed", description: msg, variant: "destructive" });
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   };
 
@@ -78,8 +86,10 @@ export default function LeaveApprovals() {
       return;
     }
     try {
-      setActionLoading(true);
+      setActionLoading("reject");
       await leaveService.reject(requestId, adminNotes.trim());
+      await fetchStats();
+      // optimistic update
       setRequests((prev) => prev.map((r) => (r.id === requestId ? { ...r, status: "Rejected" } : r)));
       toast({ title: "Leave Rejected", description: "The leave request has been rejected.", variant: "destructive" });
       setIsViewDialogOpen(false);
@@ -87,7 +97,7 @@ export default function LeaveApprovals() {
       const msg = e?.response?.data?.message || e?.message || "Rejection failed.";
       toast({ title: "Action failed", description: msg, variant: "destructive" });
     } finally {
-      setActionLoading(false);
+      setActionLoading(null);
     }
   };
 
@@ -113,7 +123,8 @@ export default function LeaveApprovals() {
     );
   }
   if (err) return <div className="text-sm text-red-600">{err}</div>;
-
+  const isPending =
+    selectedRequest?.status?.toUpperCase() === "PENDING";
   return (
     <div className="space-y-6">
       <div>
@@ -143,7 +154,7 @@ export default function LeaveApprovals() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Leave Requests</h2>
           <Button variant="outline" onClick={fetchAll}>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Refresh
           </Button>
         </div>
@@ -179,12 +190,12 @@ export default function LeaveApprovals() {
                 <TableCell>{request.appliedDate}</TableCell>
                 <TableCell>
                   <Badge
-                    variant={
-                      request.status === "Pending"
-                        ? "secondary"
-                        : request.status === "Approved"
-                        ? "default"
-                        : "destructive"
+                    className={
+                      request.status.split(" ")[0].toLowerCase() === "approved"
+                        ? "bg-green-100 hover:bg-green-200 text-green-700 border border-green-200"
+                        : request.status.split(" ")[0].toLowerCase() === "rejected"
+                          ? "bg-red-100 hover:bg-red-200 text-red-700 border border-red-200"
+                          : "bg-yellow-100 hover:bg-yellow-200 text-yellow-700 border border-yellow-200"
                     }
                   >
                     {request.status}
@@ -205,7 +216,7 @@ export default function LeaveApprovals() {
                             setSelectedRequest(request);
                             setIsViewDialogOpen(true);
                           }}
-                          disabled={actionLoading}
+                          disabled={actionLoading !== null}
                           title="Approve / Reject in dialog"
                         >
                           <Check className="h-4 w-4 text-green-600" />
@@ -218,7 +229,7 @@ export default function LeaveApprovals() {
                             setSelectedRequest(request);
                             setIsViewDialogOpen(true);
                           }}
-                          disabled={actionLoading}
+                          disabled={actionLoading !== null}
                           title="Approve / Reject in dialog"
                         >
                           <X className="h-4 w-4 text-destructive" />
@@ -285,27 +296,37 @@ export default function LeaveApprovals() {
                 />
               </div>
 
-              {selectedRequest.status === "Pending" && (
+              {isPending && (
                 <div className="flex gap-2">
                   <Button
                     className="flex-1"
                     onClick={() => handleApprove(selectedRequest.id)}
-                    disabled={actionLoading}
+                    disabled={actionLoading !== null}
                   >
-                    {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                    {actionLoading === "approve" ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
                     Approve
                   </Button>
+
                   <Button
                     variant="destructive"
                     className="flex-1"
                     onClick={() => handleReject(selectedRequest.id)}
-                    disabled={actionLoading}
+                    disabled={actionLoading !== null}
                   >
-                    {actionLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
+                    {actionLoading === "reject" ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <X className="mr-2 h-4 w-4" />
+                    )}
                     Reject
                   </Button>
                 </div>
               )}
+
             </div>
           )}
         </DialogContent>

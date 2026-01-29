@@ -98,6 +98,7 @@ model User {
   password  String
   createdAt DateTime @default(now())
   role      Role     @default(EMPLOYEE)
+  isActive  Boolean  @default(true)
 
   // Tenancy
   tenantId String
@@ -198,6 +199,7 @@ model EmployeeProfile {
   joiningDate           DateTime
   employeeType          String
   accessRole            AccessRole @default(OPERATOR)
+  isActive              Boolean    @default(true)
 
   // Links
   userId   String @unique
@@ -704,7 +706,8 @@ model Survey {
   type           SurveyType   @default(SURVEY) // SURVEY, POLL, FEEDBACK
   status         SurveyStatus @default(DRAFT)
   dueDate        DateTime?
-  targetAudience String       @default("All Employees") // For display
+  targetType     SurveyTargetType @default(ALL)
+  targetValues   String[]         // ["Backend Developer"], ["HR"], ["Engineering"]
 
   // Links
   tenantId String
@@ -717,6 +720,12 @@ model Survey {
   responses SurveyResponse[]
 
   @@index([tenantId, status])
+}
+
+enum SurveyTargetType {
+  ALL
+  DEPARTMENT
+  DESIGNATION
 }
 
 model SurveyQuestion {
@@ -925,6 +934,9 @@ model ExitCase {
   resignationDate  DateTime
   lastDay          DateTime
   reasonForLeaving String?
+  fnfCompletedAt   DateTime?
+  fnfSummary       Json?
+  completedAt      DateTime?
 
   // Links
   tenantId String

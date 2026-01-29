@@ -105,13 +105,13 @@ export function Topbar() {
         {/* 👤 User Menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2">
+            <Button variant="ghost" className="gap-2 hover:bg-blue-50">
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-sm font-medium">
                 {initials}
               </div>
 
               <div className="hidden md:block text-left">
-                <div className="text-sm font-medium">
+                <div className="text-sm text-black font-medium">
                   {user?.name ?? "Unknown User"}
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -120,19 +120,6 @@ export function Topbar() {
               </div>
             </Button>
           </DropdownMenuTrigger>
-
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-
-            <DropdownMenuItem
-              onClick={() => (window.location.href = "/admin/profile")}
-            >
-              <User size={16} className="mr-2" />
-              Profile
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </DropdownMenuContent>
         </DropdownMenu>
       </div>
     </header>

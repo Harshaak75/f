@@ -8,6 +8,17 @@ import { Link } from "react-router-dom";
 import { useToast } from "../../hooks/use-toast";
 import { cn } from "../../lib/utils";
 import { CombinedEmployee, EmployeeDirectoryList } from "../../utils/api/Admin.employeeFunctionality";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Checkbox } from "../../components/ui/checkbox";
+import { Label } from "recharts";
+import { exportEmployeesToExcel } from "../../utils/exportEmployees";
+import { AlertDialog } from "@radix-ui/react-alert-dialog";
+import { AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "../../components/ui/alert-dialog";
 
 export default function EmployeeDirectory() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,22 +52,108 @@ export default function EmployeeDirectory() {
     };
   }, [toast]);
 
+  type EmployeeFilters = {
+    employeeType?: string;
+    designation?: string;
+    accessRole?: string;
+
+    hasDocuments?: boolean;
+    hasAssets?: boolean;
+
+    joiningFrom?: Date;
+    joiningTo?: Date;
+  };
+
+  const [draftFilters, setDraftFilters] = useState<EmployeeFilters>({});
+  const [appliedFilters, setAppliedFilters] = useState<EmployeeFilters>({});
+
+  const designationOptions = useMemo(() => {
+    const set = new Set<string>();
+
+    employees.forEach((emp) => {
+      if (emp.designation) {
+        set.add(emp.designation);
+      }
+    });
+
+    return Array.from(set).sort();
+  }, [employees]);
+
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return employees;
-    return employees.filter((emp) => {
-      const fullName = `${emp.firstName ?? ""} ${emp.lastName ?? ""}`.toLowerCase();
-      const email = emp.user?.email?.toLowerCase() ?? "";
-      const designation = emp.designation?.toLowerCase() ?? "";
-      const empId = emp.employeeId?.toLowerCase() ?? "";
-      return (
-        fullName.includes(q) ||
-        email.includes(q) ||
-        designation.includes(q) ||
-        empId.includes(q)
-      );
+
+    return employees.filter((emp: any) => {
+      // 🔍 Search filter
+      if (q) {
+        const fullName = `${emp.firstName ?? ""} ${emp.lastName ?? ""}`.toLowerCase();
+        const email = emp.user?.email?.toLowerCase() ?? "";
+        const designation = emp.designation?.toLowerCase() ?? "";
+        const empId = emp.employeeId?.toLowerCase() ?? "";
+
+        const matchesSearch =
+          fullName.includes(q) ||
+          email.includes(q) ||
+          designation.includes(q) ||
+          empId.includes(q);
+
+        if (!matchesSearch) return false;
+      }
+
+      // 🎯 Employee Type
+      if (
+        appliedFilters.employeeType &&
+        emp.employeeType !== appliedFilters.employeeType
+      ) {
+        return false;
+      }
+
+      // 🎯 Designation
+      if (
+        appliedFilters.designation &&
+        emp.designation !== appliedFilters.designation
+      ) {
+        return false;
+      }
+
+      // 🎯 Access Role
+      if (
+        appliedFilters.accessRole &&
+        emp.accessRole !== appliedFilters.accessRole
+      ) {
+        return false;
+      }
+
+      // 🎯 Has Documents
+      if (
+        appliedFilters.hasDocuments &&
+        (emp.documents?.length ?? 0) === 0
+      ) {
+        return false;
+      }
+
+      if (appliedFilters.hasAssets && (emp.assets?.length ?? 0) === 0) {
+        return false;
+      }
+
+      if (
+        appliedFilters.joiningFrom &&
+        new Date(emp.joiningDate) < appliedFilters.joiningFrom
+      ) {
+        return false;
+      }
+
+      if (
+        appliedFilters.joiningTo &&
+        new Date(emp.joiningDate) > appliedFilters.joiningTo
+      ) {
+        return false;
+      }
+
+      return true;
     });
-  }, [employees, searchQuery]);
+  }, [employees, searchQuery, appliedFilters]);
+
+
 
   return (
     <div className="space-y-6">
@@ -66,14 +163,180 @@ export default function EmployeeDirectory() {
           <p className="text-muted-foreground mt-1">Manage and view all employees</p>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" className="gap-2">
-            <Filter size={16} />
-            Filter
-          </Button>
-          <Button variant="outline" className="gap-2">
-            <Download size={16} />
-            Export
-          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Filter size={16} />
+                Filter
+              </Button>
+            </PopoverTrigger>
+
+            <PopoverContent className="w-[340px] space-y-5">
+              <h4 className="font-medium">Filter Employees</h4>
+
+              {/* Employee Type */}
+              <Select
+                value={draftFilters.employeeType}
+                onValueChange={(v) =>
+                  setDraftFilters((f) => ({ ...f, employeeType: v || undefined }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Employee Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full-time">Full-time</SelectItem>
+                  <SelectItem value="part-time">Part-time</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={draftFilters.designation}
+                onValueChange={(v) =>
+                  setDraftFilters((f) => ({ ...f, designation: v || undefined }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Designation" />
+                </SelectTrigger>
+
+                <SelectContent>
+                  {designationOptions.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-muted-foreground">
+                      No designations
+                    </div>
+                  ) : (
+                    designationOptions.map((designation) => (
+                      <SelectItem key={designation} value={designation}>
+                        {designation}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+
+
+              <Select
+                value={draftFilters.accessRole}
+                onValueChange={(v) =>
+                  setDraftFilters((f) => ({ ...f, accessRole: v || undefined }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Access Role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">Admin</SelectItem>
+                  <SelectItem value="OPERATOR">Operator</SelectItem>
+                  <SelectItem value="EMPLOYEE">Employee</SelectItem>
+                </SelectContent>
+              </Select>
+
+
+
+
+              {/* Has Documents */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={draftFilters.hasDocuments ?? false}
+                  onCheckedChange={(v) =>
+                    setDraftFilters((f) => ({ ...f, hasDocuments: Boolean(v) }))
+                  }
+                />
+                <span className="text-sm">Has documents</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={draftFilters.hasAssets ?? false}
+                  onCheckedChange={(v) =>
+                    setDraftFilters((f) => ({ ...f, hasAssets: Boolean(v) }))
+                  }
+                />
+                <span className="text-sm">Has assets</span>
+              </div>
+
+
+              <div className="space-y-2">
+                <Label className="text-sm">Joining Date</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    onChange={(e) =>
+                      setDraftFilters((f) => ({
+                        ...f,
+                        joiningFrom: e.target.value
+                          ? new Date(e.target.value)
+                          : undefined,
+                      }))
+                    }
+                  />
+                  <Input
+                    type="date"
+                    onChange={(e) =>
+                      setDraftFilters((f) => ({
+                        ...f,
+                        joiningTo: e.target.value
+                          ? new Date(e.target.value)
+                          : undefined,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+
+
+
+              <div className="flex justify-between pt-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setDraftFilters({});
+                    setAppliedFilters({});
+                  }}
+                >
+                  Reset
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setAppliedFilters(draftFilters);
+                  }}
+                >
+                  Apply
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Download size={16} />
+                Export
+              </Button>
+            </AlertDialogTrigger>
+
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Export Employees</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Export the currently filtered employees.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+
+              <AlertDialogFooter>
+                <Button
+                  onClick={() => exportEmployeesToExcel(filtered)}
+                >
+                  Export Excel
+                </Button>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           {/* Use absolute route that matches your router: /admin/employees/onboarding */}
           <Link to="/admin/employees/onboarding">
             <Button className="gap-2">+ Add Employee</Button>

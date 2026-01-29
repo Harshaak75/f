@@ -22,7 +22,7 @@ router.get('/', protect, async (req, res) => {
 
   try {
     // 1. Fetch all surveys
-    const surveys = await prisma.survey.findMany({
+    const surveys: any = await prisma.survey.findMany({
       where: { tenantId },
       include: {
         _count: {
@@ -32,6 +32,29 @@ router.get('/', protect, async (req, res) => {
       orderBy: { dueDate: 'desc' },
     });
 
+    const expectedCount = async (survey: any) => {
+  if (survey.targetType === 'ALL') {
+    return prisma.user.count({
+      where: {
+        tenantId,
+        role: Role.EMPLOYEE,
+      },
+    });
+  }
+
+  if (survey.targetType === 'DESIGNATION') {
+    return prisma.employeeProfile.count({
+      where: {
+        tenantId,
+        designation: { in: survey.targetValues },
+      },
+    });
+  }
+
+  return 0;
+};
+
+
     // 2. Get total number of employees for calculating expected count
     // (A simpler way is to store `expectedCount` on the survey itself)
     const totalEmployees = await prisma.user.count({
@@ -39,23 +62,41 @@ router.get('/', protect, async (req, res) => {
     });
 
     // 3. Format data to match your frontend
-    const formattedSurveys = surveys.map((survey) => ({
+    const formattedSurveys = surveys.map(async (survey: any) => ({
       id: survey.id,
       name: survey.title,
       type: survey.type,
       targetAudience: survey.targetAudience,
       responseCount: survey._count.responses,
-      expectedCount: totalEmployees, // This is a simplification
+      expectedCount: await expectedCount(survey), // This is a simplification
       status: survey.status,
       dueDate: survey.dueDate?.toISOString().split('T')[0] || 'N/A',
     }));
 
     // TODO: Calculate summary cards
+    const totalResponses = surveys.reduce(
+      (sum:any, s: any) => sum + s._count.responses,
+      0
+    );
+
+    const activeSurveys = surveys.filter(
+      (s: any) => s.status === SurveyStatus.ACTIVE
+    ).length;
+
+    const upcomingDeadlines = surveys.filter(
+      (s: any) => s.dueDate && s.dueDate > new Date()
+    ).length;
+
+    const avgResponseRate =
+      totalEmployees === 0 || surveys.length === 0
+        ? 0
+        : Math.round((totalResponses / (totalEmployees * surveys.length)) * 100);
+
     const summaryCards = {
-      activeSurveys: formattedSurveys.filter(s => s.status === 'ACTIVE').length,
-      avgResponseRate: 71, // Placeholder
-      totalResponses: 1502, // Placeholder
-      upcomingDeadlines: 3, // Placeholder
+      activeSurveys,
+      avgResponseRate,
+      totalResponses,
+      upcomingDeadlines,
     };
 
     res.status(200).json({
@@ -131,37 +172,39 @@ router.post('/', protect, async (req, res) => {
  */
 router.get('/me', protect, async (req, res) => {
   const { tenantId, userId, role } = req.user!;
+  if (role !== Role.EMPLOYEE) return res.sendStatus(403);
 
-  if (role !== Role.EMPLOYEE) {
-    return res.status(403).json({ message: 'Forbidden.' });
-  }
+  const profile = await prisma.employeeProfile.findUnique({
+    where: { userId },
+  });
 
-  try {
-    // 1. Find all surveys this user *has* responded to
-    const responses = await prisma.surveyResponse.findMany({
-      where: { userId },
-      select: { surveyId: true },
-    });
-    const respondedSurveyIds = responses.map(r => r.surveyId);
+  const respondedSurveyIds = await prisma.surveyResponse.findMany({
+    where: { userId },
+    select: { surveyId: true },
+  }).then(r => r.map(x => x.surveyId));
 
-    // 2. Find all *active* surveys for the tenant,
-    //    *excluding* the ones the user has already taken
-    const pendingSurveys = await prisma.survey.findMany({
-      where: {
-        tenantId,
-        status: SurveyStatus.ACTIVE,
-        id: {
-          notIn: respondedSurveyIds, // The magic!
+  const surveys: any = await prisma.survey.findMany({
+    where: {
+      tenantId,
+      status: SurveyStatus.ACTIVE,
+      dueDate: { gte: new Date() },
+      id: { notIn: respondedSurveyIds },
+      OR: [
+        { targetType: 'ALL' },
+        {
+          targetType: 'DESIGNATION',
+          targetValues: { has: profile?.designation },
         },
-      },
-    });
+      ],
+    },
+    include: {
+      questions: { orderBy: { order: 'asc' } },
+    },
+  });
 
-    res.status(200).json(pendingSurveys);
-  } catch (error) {
-    console.error('Failed to fetch pending surveys:', error);
-    res.status(500).json({ message: 'Internal server error' });
-  }
+  res.json(surveys);
 });
+
 
 // ====================================================================
 // EMPLOYEE: Submit Survey Responses
@@ -180,7 +223,7 @@ router.post('/:id/respond', protect, async (req, res) => {
   if (role !== Role.EMPLOYEE) {
     return res.status(403).json({ message: 'Forbidden.' });
   }
-  
+
   if (!answers || !Array.isArray(answers) || answers.length === 0) {
     return res.status(400).json({ message: 'Answers array is required.' });
   }
@@ -196,7 +239,7 @@ router.post('/:id/respond', protect, async (req, res) => {
           tenantId: tenantId!,
         }
       });
-      
+
       // 2. Create all the individual answers
       await tx.surveyAnswer.createMany({
         data: answers.map((a: any) => ({
@@ -209,7 +252,7 @@ router.post('/:id/respond', protect, async (req, res) => {
           arrayAnswer: a.arrayAnswer,
         }))
       });
-      
+
       return response;
     });
 
@@ -258,10 +301,11 @@ router.get('/:id/analysis', protect, async (req, res) => {
     // 2. Get all answers for all questions in this survey
     const answers = await prisma.surveyAnswer.findMany({
       where: {
+        tenantId,
         questionId: { in: survey.questions.map(q => q.id) },
       },
     });
-    
+
     // 3. Aggregate results (this is a simple example)
     const analysis = survey.questions.map(q => {
       const questionAnswers = answers.filter(a => a.questionId === q.id);

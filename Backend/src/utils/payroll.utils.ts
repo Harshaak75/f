@@ -14,6 +14,7 @@ export async function calculatePayrollPreview(
   const employeesWithOffers = await prisma.employeeProfile.findMany({
     where: {
       tenantId: tenantId,
+      isActive: true,
       // Ensure the employee has a salary structure
       user: {
         offer: {
