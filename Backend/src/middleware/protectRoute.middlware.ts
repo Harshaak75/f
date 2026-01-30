@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import prisma from "../prisma/client";
+import { isDevAuth } from "../config/env";
 
 // This is a new interface, separate from the user one
 export interface TenantRequest extends Request {
@@ -15,6 +16,17 @@ export const protectTenantApi = async (
   res: Response,
   next: NextFunction
 ) => {
+
+  // DEV → tenant comes from JWT
+  if (isDevAuth()) {
+    if (!req.user?.tenantId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    req.tenantId = req.user.tenantId;
+    return next();
+  }
+
   let token: string | undefined;
 
   if (
