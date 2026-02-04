@@ -1243,7 +1243,9 @@ router.post("/ApplyLeave", protect, async (req, res) => {
       },
     });
 
-    // 4. TODO: Send a notification to the HR Admin (e.g., email)
+    // 4. TODO: Send a notification to the HR Admin (e.g., email) new leave request
+    // 5. TODO: Send a notification to the employee (e.g., email) applied
+    // 6. TODO: Send a notification to the hr (e.g., email) new leave request
 
     res
       .status(201)

@@ -213,6 +213,8 @@ router.post('/:requestId/approve', protect, async (req, res) => {
       return approvedRequest;
     });
 
+    // 5. TODO: Send a notification to the employee (e.g., email) approved
+
     res.status(200).json(updatedRequest);
   } catch (error: any) {
     console.error('Failed to approve leave:', error);
@@ -281,6 +283,8 @@ router.post('/:requestId/reject', protect, async (req, res) => {
 
       return rejectedRequest;
     });
+
+    // 5. TODO: Send a notification to the employee (e.g., email) rejected with reasons
 
     res.status(200).json(updatedRequest);
   } catch (error: any) {
