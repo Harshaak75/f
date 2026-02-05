@@ -1,5 +1,6 @@
 import { EmployeeProfile, Offer, PayrollRunItem, User } from '@prisma/client';
 import prisma from '../prisma/client'; // Import prisma client
+import nodemailer from 'nodemailer';
 
 // A type combining the data needed for a payslip
 type PayslipData = PayrollRunItem & {
@@ -114,18 +115,42 @@ export async function sendEmail(
   subject: string,
   html: string
 ): Promise<void> {
-  console.log('==================================================');
-  console.log('--- DUMMY EMAIL SENDER ---');
-  console.log(`TO: ${to}`);
-  console.log(`SUBJECT: ${subject}`);
-  console.log('BODY (HTML):');
-  console.log(html.substring(0, 300) + '...'); // Log a snippet
-  console.log('--- EMAIL "SENT" ---');
-  console.log('==================================================');
+  // If SMTP is not configured, fall back to dummy sender
+  if (
+    !process.env.SMTP_HOST ||
+    !process.env.SMTP_PORT ||
+    !process.env.SMTP_USER ||
+    !process.env.SMTP_PASS
+  ) {
+    console.log('==================================================');
+    console.log('--- DUMMY EMAIL SENDER ---');
+    console.log(`TO: ${to}`);
+    console.log(`SUBJECT: ${subject}`);
+    console.log('BODY (HTML):');
+    console.log(html.substring(0, 300) + '...');
+    console.log('--- EMAIL "SENT" ---');
+    console.log('==================================================');
+    return;
+  }
 
-  // Simulate a successful API call
-  return Promise.resolve();
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT),
+    secure: Number(process.env.SMTP_PORT) === 465, // true for 465, false otherwise
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to,
+    subject,
+    html,
+  });
 }
+
 
 /**
  * Fetches all data for a single payslip and formats it for email/PDF.
