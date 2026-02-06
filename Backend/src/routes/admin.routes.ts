@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { protect } from '../middleware/auth.middleware';
 import prisma from '../prisma/client';
 import { Role, LeaveStatus } from '@prisma/client';
+import nodemailer from "nodemailer";
 import { sendEmail } from '../utils/email.utils';
 
 const router = Router();
@@ -280,10 +281,10 @@ router.post('/:requestId/approve', protect, async (req, res) => {
  * @desc    Reject a pending leave request.
  * @access  Private (Admin)
  */
-router.post('/:requestId/reject', protect, async (req, res) => {
+router.post('/leave/:requestId/reject', protect, async (req, res) => {
   const { tenantId, role, userId: adminUserId } = req.user!;
   const { requestId } = req.params;
-  const { adminNotes } = req.body; // Reason for rejection
+  const { adminNotes } = req.body;
 
   if (role !== Role.ADMIN) {
     return res.status(403).json({ message: 'Forbidden.' });
@@ -293,13 +294,12 @@ router.post('/:requestId/reject', protect, async (req, res) => {
     return res.status(400).json({ message: 'Rejection reason is required.' });
   }
 
-  try {
+   try {
     const updatedRequest = await prisma.$transaction(async (tx) => {
-      // 1. Find the request
       const request = await tx.leaveRequest.findFirst({
         where: {
           id: requestId,
-          tenantId: tenantId,
+          tenantId,
           status: LeaveStatus.PENDING,
         },
       });
@@ -313,13 +313,14 @@ router.post('/:requestId/reject', protect, async (req, res) => {
         where: { id: request.id },
         data: {
           status: LeaveStatus.REJECTED,
-          approvedById: adminUserId,
-          adminNotes: adminNotes,
+          approvedById: adminUserId, // rename field if possible
+          adminNotes,
+          // rejectedAt: new Date(), // recommended field
         },
       });
 
       // 3. Log this action
-      await tx.activityLog.create({
+     await tx.activityLog.create({
         data: {
           tenantId,
           action: 'LEAVE_REJECTED',
@@ -335,13 +336,74 @@ router.post('/:requestId/reject', protect, async (req, res) => {
     });
 
     // 5. TODO: Send a notification to the employee (e.g., email) rejected with reasons
+    // 5. Send a notification to the employee (email)
+// 5. Send rejection email to employee (READ-ONLY, tenant-safe)
+
+try {
+  const employee = await prisma.user.findFirst({
+    where: {
+      id: updatedRequest.userId,
+      tenantId: tenantId,
+    },
+    select: {
+      email: true,
+      employeeProfile: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
+    },
+  });
+
+  if (!employee || !employee.email) {
+    console.warn(
+      `Leave rejected but email not sent: Employee email not found for userId ${updatedRequest.userId}`
+    );
+  } else {
+    const employeeName = `${employee.employeeProfile?.firstName || ''} ${
+      employee.employeeProfile?.lastName || ''
+    }`.trim();
+
+    await sendEmail(
+      employee.email,
+      'Your leave request has been rejected',
+      `
+        <p>Hello ${employeeName || 'Employee'},</p>
+        <p>Your leave request has been <strong style="color:red;">rejected</strong>.</p>
+
+        <p>
+          <strong>Leave Period:</strong>
+          ${updatedRequest.startDate.toISOString().split('T')[0]}
+          to
+          ${updatedRequest.endDate.toISOString().split('T')[0]}
+        </p>
+
+        <p><strong>Reason:</strong> ${adminNotes}</p>
+
+        <p>Regards,<br/>HR Team</p>
+      `
+    );
+  }
+} catch (emailError) {
+  console.error(
+    `Error while sending leave rejection email for requestId ${updatedRequest.id}:`,
+    emailError
+  );
+}
+
+
 
     res.status(200).json(updatedRequest);
+  //
+
   } catch (error: any) {
     console.error('Failed to reject leave:', error);
     res.status(400).json({ message: error.message || 'Rejection failed.' });
   }
 });
+
+
 
 
 // notifications for admin user
