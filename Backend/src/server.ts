@@ -48,15 +48,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use((req, res, next) => {
-  res.removeHeader("X-Frame-Options"); // you already had this
-  res.setHeader(
-    "Content-Security-Policy",
-    "frame-ancestors 'self' f-jet-eight.vercel.app"
-  );
-  res.setHeader("Permissions-Policy", "geolocation=(self)");
-  next();
-});
 
 // ✅ Routes
 app.use("/api/employee", employeeRoutes);
