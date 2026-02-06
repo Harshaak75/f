@@ -281,7 +281,7 @@ router.post('/:requestId/approve', protect, async (req, res) => {
  * @desc    Reject a pending leave request.
  * @access  Private (Admin)
  */
-router.post('/leave/:requestId/reject', protect, async (req, res) => {
+router.post('/:requestId/reject', protect, async (req, res) => {
   const { tenantId, role, userId: adminUserId } = req.user!;
   const { requestId } = req.params;
   const { adminNotes } = req.body;
@@ -334,10 +334,6 @@ router.post('/leave/:requestId/reject', protect, async (req, res) => {
 
       return rejectedRequest;
     });
-
-    // 5. TODO: Send a notification to the employee (e.g., email) rejected with reasons
-    // 5. Send a notification to the employee (email)
-// 5. Send rejection email to employee (READ-ONLY, tenant-safe)
 
 try {
   const employee = await prisma.user.findFirst({
@@ -402,9 +398,6 @@ try {
     res.status(400).json({ message: error.message || 'Rejection failed.' });
   }
 });
-
-
-
 
 // notifications for admin user
 router.get("/notifications/my", protect, async (req, res) => {
