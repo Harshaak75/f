@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { protect } from '../middleware/auth.middleware';
 import prisma from '../prisma/client';
 import { Role, LeaveStatus } from '@prisma/client';
+import { sendEmail } from '../utils/email.utils';
 
 const router = Router();
 
@@ -214,6 +215,57 @@ router.post('/:requestId/approve', protect, async (req, res) => {
     });
 
     // 5. TODO: Send a notification to the employee (e.g., email) approved
+  
+// 5. Send approval email to employee (READ-ONLY, tenant-safe)
+try {
+  const employee = await prisma.user.findFirst({
+    where: {
+      id: updatedRequest.userId,
+      tenantId: tenantId, // 🔒 tenant-safe
+    },
+    select: {
+      email: true,
+      employeeProfile: {
+        select: {
+          firstName: true,
+          lastName: true,
+        },
+      },
+    },
+  });
+
+  if (!employee || !employee.email) {
+    console.warn(
+      `Leave approved but email not sent: Employee email not found for userId ${updatedRequest.userId}`
+    );
+  } else {
+    const employeeName = `${employee.employeeProfile?.firstName || ''} ${
+      employee.employeeProfile?.lastName || ''
+    }`.trim();
+
+    await sendEmail(
+  employee.email,
+  'Your leave request has been approved',
+  `
+    <p>Hello ${employeeName || 'Employee'},</p>
+    <p>Your leave request has been <strong>approved</strong>.</p>
+    <p>
+      <strong>Leave Period:</strong>
+      ${updatedRequest.startDate.toISOString().split('T')[0]}
+      to
+      ${updatedRequest.endDate.toISOString().split('T')[0]}
+    </p>
+    <p>Regards,<br/>HR Team</p>
+  `
+);
+  }
+} catch (emailError) {
+  console.error(
+    `Error while sending leave approval email for requestId ${updatedRequest.id}:`,
+    emailError
+  );
+}
+
 
     res.status(200).json(updatedRequest);
   } catch (error: any) {
