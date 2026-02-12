@@ -12,22 +12,11 @@ export async function createKeycloakUser(
 ): Promise<{ id: string }> {
     let { accessToken, realm, adminBaseUrl } =
         await getTenantAdminToken(tenantId);
-    // only for testing
-
-    if (adminBaseUrl == "http://keycloak:8080") {
-        adminBaseUrl = "http://194.163.139.103:8090"
-    }
-
-    console.log("adminBaseUrl", adminBaseUrl);
-    console.log("realm", realm);
-    console.log("accessToken", accessToken);
 
     const url = `${adminBaseUrl}/admin/realms/${realm}/users`;
-    console.log("url", url);
 
     try {
         // Prepare user attributes - store department if provided
-        console.log("data", data);
         const attributes: Record<string, string[]> = {};
         if (data.department) {
             attributes.department = [data.department];

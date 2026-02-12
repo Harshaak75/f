@@ -9,13 +9,6 @@ export async function getTenantAdminToken(tenantId: string): Promise<{
   const kc = await getTenantKeycloakConfig(tenantId);
 
   let tokenUrl = kc.tokenUrl;
-  // only for testing
-
-  if (tokenUrl == "http://keycloak:8080/realms/DotSpeaks_NGO/protocol/openid-connect/token") {
-    tokenUrl = "http://194.163.139.103:8090/realms/DotSpeaks_NGO/protocol/openid-connect/token"
-  }
-
-  console.log("tokenUrl", tokenUrl);
 
   const res = await axios.post(
     tokenUrl,

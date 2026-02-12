@@ -165,7 +165,7 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
 
   // Verify Keycloak token using JWKS endpoint
   const internalJwksUri = issuerUrl
-    .replace("http://keycloak:8080", "http://194.163.139.103:8090")
+    .replace("http://194.163.139.103:8090", "http://keycloak:8080")
     + "/protocol/openid-connect/certs";
 
   const client = jwksClient({
@@ -239,8 +239,8 @@ router.get("/sso-login/:tenantCode", async (req, res) => {
     sameSite: "none",
     maxAge: 24 * 60 * 60 * 1000,
   });
-  res.redirect(`http://localhost:8081/employee?token=${hrmJwt}`);
-  // res.redirect(`https://hrms.dotspeaks.com/employee?token=${hrmJwt}`);
+  // res.redirect(`http://localhost:8081/employee?token=${hrmJwt}`);
+  res.redirect(`https://hrms.dotspeaks.com/employee?token=${hrmJwt}`);
 });
 
 export default router;
