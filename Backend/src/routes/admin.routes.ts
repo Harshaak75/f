@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { protect } from '../middleware/auth.middleware';
 import prisma from '../prisma/client';
 import { Role, LeaveStatus } from '@prisma/client';
+import nodemailer from "nodemailer";
+import { sendEmail } from '../utils/email.utils';
 
 const router = Router();
 
@@ -78,17 +80,16 @@ router.get('/', protect, async (req, res) => {
         return {
           id: request.id,
           employeeId: request.user.employeeProfile?.employeeId || 'N/A',
-          employeeName: `${request.user.employeeProfile?.firstName || ''} ${
-            request.user.employeeProfile?.lastName || ''
-          }`.trim(),
+          employeeName: `${request.user.employeeProfile?.firstName || ''} ${request.user.employeeProfile?.lastName || ''
+            }`.trim(),
           department: request.user.employeeProfile?.designation || 'N/A',
           leaveType: request.policy.name,
-          startDate: request.startDate.toISOString().split('T')[0],
-          endDate: request.endDate.toISOString().split('T')[0],
+          startDate: new Date(request.startDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }),
+          endDate: new Date(request.endDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }),
           days: request.days,
           reason: request.reason,
           status: request.status,
-          appliedDate: request.appliedDate.toISOString().split('T')[0],
+          appliedDate: new Date(request.appliedDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }),
           // This is the extra data you asked for:
           balanceInfo: {
             daysAllotted: balance?.daysAllotted || 0,
@@ -215,6 +216,56 @@ router.post('/:requestId/approve', protect, async (req, res) => {
 
     // 5. TODO: Send a notification to the employee (e.g., email) approved
 
+    // 5. Send approval email to employee (READ-ONLY, tenant-safe)
+    try {
+      const employee = await prisma.user.findFirst({
+        where: {
+          id: updatedRequest.userId,
+          tenantId: tenantId, // 🔒 tenant-safe
+        },
+        select: {
+          email: true,
+          employeeProfile: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      });
+
+      if (!employee || !employee.email) {
+        console.warn(
+          `Leave approved but email not sent: Employee email not found for userId ${updatedRequest.userId}`
+        );
+      } else {
+        const employeeName = `${employee.employeeProfile?.firstName || ''} ${employee.employeeProfile?.lastName || ''
+          }`.trim();
+
+        await sendEmail(
+          employee.email,
+          'Your leave request has been approved',
+          `
+    <p>Hello ${employeeName || 'Employee'},</p>
+    <p>Your leave request has been <strong>approved</strong>.</p>
+    <p>
+      <strong>Leave Period:</strong>
+      ${new Date(updatedRequest.startDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
+      to
+      ${new Date(updatedRequest.endDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
+    </p>
+    <p>Regards,<br/>HR Team</p>
+  `
+        );
+      }
+    } catch (emailError) {
+      console.error(
+        `Error while sending leave approval email for requestId ${updatedRequest.id}:`,
+        emailError
+      );
+    }
+
+
     res.status(200).json(updatedRequest);
   } catch (error: any) {
     console.error('Failed to approve leave:', error);
@@ -233,7 +284,7 @@ router.post('/:requestId/approve', protect, async (req, res) => {
 router.post('/:requestId/reject', protect, async (req, res) => {
   const { tenantId, role, userId: adminUserId } = req.user!;
   const { requestId } = req.params;
-  const { adminNotes } = req.body; // Reason for rejection
+  const { adminNotes } = req.body;
 
   if (role !== Role.ADMIN) {
     return res.status(403).json({ message: 'Forbidden.' });
@@ -245,11 +296,10 @@ router.post('/:requestId/reject', protect, async (req, res) => {
 
   try {
     const updatedRequest = await prisma.$transaction(async (tx) => {
-      // 1. Find the request
       const request = await tx.leaveRequest.findFirst({
         where: {
           id: requestId,
-          tenantId: tenantId,
+          tenantId,
           status: LeaveStatus.PENDING,
         },
       });
@@ -263,8 +313,9 @@ router.post('/:requestId/reject', protect, async (req, res) => {
         where: { id: request.id },
         data: {
           status: LeaveStatus.REJECTED,
-          approvedById: adminUserId,
-          adminNotes: adminNotes,
+          approvedById: adminUserId, // rename field if possible
+          adminNotes,
+          // rejectedAt: new Date(), // recommended field
         },
       });
 
@@ -278,21 +329,74 @@ router.post('/:requestId/reject', protect, async (req, res) => {
           targetUserId: request.userId,
         },
       });
-      
+
       // *** NOTE: We DO NOT update the LeaveBalance on rejection ***
 
       return rejectedRequest;
     });
 
-    // 5. TODO: Send a notification to the employee (e.g., email) rejected with reasons
+    try {
+      const employee = await prisma.user.findFirst({
+        where: {
+          id: updatedRequest.userId,
+          tenantId: tenantId,
+        },
+        select: {
+          email: true,
+          employeeProfile: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      });
+
+      if (!employee || !employee.email) {
+        console.warn(
+          `Leave rejected but email not sent: Employee email not found for userId ${updatedRequest.userId}`
+        );
+      } else {
+        const employeeName = `${employee.employeeProfile?.firstName || ''} ${employee.employeeProfile?.lastName || ''
+          }`.trim();
+
+        await sendEmail(
+          employee.email,
+          'Your leave request has been rejected',
+          `
+        <p>Hello ${employeeName || 'Employee'},</p>
+        <p>Your leave request has been <strong style="color:red;">rejected</strong>.</p>
+
+        <p>
+          <strong>Leave Period:</strong>
+          ${new Date(updatedRequest.startDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
+          to
+          ${new Date(updatedRequest.endDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
+        </p>
+
+        <p><strong>Reason:</strong> ${adminNotes}</p>
+
+        <p>Regards,<br/>HR Team</p>
+      `
+        );
+      }
+    } catch (emailError) {
+      console.error(
+        `Error while sending leave rejection email for requestId ${updatedRequest.id}:`,
+        emailError
+      );
+    }
+
+
 
     res.status(200).json(updatedRequest);
+    //
+
   } catch (error: any) {
     console.error('Failed to reject leave:', error);
     res.status(400).json({ message: error.message || 'Rejection failed.' });
   }
 });
-
 
 // notifications for admin user
 router.get("/notifications/my", protect, async (req, res) => {

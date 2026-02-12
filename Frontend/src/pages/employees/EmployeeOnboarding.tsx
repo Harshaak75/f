@@ -1,5 +1,5 @@
 // EmployeeOnboarding.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import {
@@ -62,6 +62,7 @@ const initialBasic: CreateOnboardingPayload = {
   emergencyContactName: "",
   emergencyContactPhone: "",
   designation: "",
+  department: "", // Department field
   joiningDate: "", // yyyy-mm-dd
   employeeType: "", // full-time | part-time | contractor
   dateOfBirth: "", // yyyy-mm-dd
@@ -150,10 +151,7 @@ export default function EmployeeOnboarding() {
       setLoading(false);
     }
   };
-  useEffect(() => {
-    // Documents step is optional → always valid
-    setIsStepValid(true);
-  }, [isStepValid]);
+
 
   // Enhanced handleNext: also prevents skipping when step invalid
   const handleNext = async () => {
@@ -177,10 +175,16 @@ export default function EmployeeOnboarding() {
         if (
           !basic.firstName ||
           !basic.lastName ||
+          !basic.name ||
           !basic.email ||
           !basic.password ||
+          !basic.personalEmail ||
           !basic.phone ||
+          !basic.altPhone ||
+          !basic.emergencyContactName ||
+          !basic.emergencyContactPhone ||
           !basic.designation ||
+          !basic.employeeId ||
           !basic.joiningDate ||
           !basic.employeeType ||
           !basic.dateOfBirth
@@ -434,6 +438,7 @@ export default function EmployeeOnboarding() {
                 assets={assets}
                 setAssets={setAssets}
                 onValidityChange={setIsStepValid}
+                employeeId={basic.employeeId}
               />
             )}
             {currentStep === 5 && <OrientationForm onValidityChange={setIsStepValid} />}
@@ -503,7 +508,8 @@ function BasicInfoForm({
     register,
     control,
     watch,
-    formState: { errors, isValid, isSubmitted },
+    setValue,
+    formState: { errors, isValid },
   } = useForm<BasicFormType>({
     resolver: zodResolver(basicInfoSchema),
     mode: "onChange",
@@ -519,6 +525,7 @@ function BasicInfoForm({
       emergencyContactName: basic.emergencyContactName || "",
       emergencyContactPhone: basic.emergencyContactPhone || "",
       designation: basic.designation,
+      department: basic.department || "", // Department field
       employeeId: basic.employeeId || "",
       joiningDate: basic.joiningDate,
       dateOfBirth: basic.dateOfBirth,
@@ -550,6 +557,7 @@ function BasicInfoForm({
         emergencyContactName: values.emergencyContactName ?? "",
         emergencyContactPhone: values.emergencyContactPhone ?? "",
         designation: values.designation ?? "",
+        department: values.department ?? "", // Department field
         employeeId: values.employeeId ?? "",
         joiningDate: values.joiningDate ?? "",
         dateOfBirth: values.dateOfBirth ?? "",
@@ -638,7 +646,7 @@ function BasicInfoForm({
           )}
         </div>
         <div>
-          <Label>Personal Email</Label>
+          <Label>Personal Email *</Label>
           <input
             {...register("personalEmail")}
             className="input-base w-full p-1 border-none outline-gray-100"
@@ -668,7 +676,7 @@ function BasicInfoForm({
           )}
         </div>
         <div>
-          <Label>Alternate Phone</Label>
+          <Label>Alternate Phone *</Label>
           <input
             {...register("altPhone")}
             className="input-base w-full p-1 border-none outline-gray-100"
@@ -685,7 +693,7 @@ function BasicInfoForm({
       {/* Emergency */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label>Emergency Contact Name</Label>
+          <Label>Emergency Contact Name *</Label>
           <input
             {...register("emergencyContactName")}
             className="input-base w-full p-1 border-none outline-gray-100"
@@ -693,9 +701,12 @@ function BasicInfoForm({
             autoCapitalize="none"
             autoComplete="off"
           />
+          {errors.emergencyContactName && (
+            <p className="text-sm text-red-500 mt-1">{errors.emergencyContactName.message}</p>
+          )}
         </div>
         <div>
-          <Label>Emergency Contact Phone</Label>
+          <Label>Emergency Contact Phone *</Label>
           <input
             {...register("emergencyContactPhone")}
             className="input-base w-full p-1 border-none outline-gray-100"
@@ -727,14 +738,32 @@ function BasicInfoForm({
 
 
         <div>
-          <Label>Employee ID</Label>
-          <input
-            {...register("employeeId")}
-            className="input-base w-full p-1 border-none outline-gray-100"
-            placeholder="EMP-001"
-            autoCapitalize="none"
-            autoComplete="off"
-          />
+          <Label>Employee ID *</Label>
+          <div className="flex gap-2">
+            <input
+              {...register("employeeId")}
+              className="input-base w-full p-1 border-none outline-gray-100"
+              placeholder="Click Generate"
+              autoCapitalize="none"
+              autoComplete="off"
+              readOnly
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const result = await employeeFunctionalityService.generateEmployeeId();
+                  setValue("employeeId", result.employeeId, { shouldValidate: true });
+                } catch (error) {
+                  console.error("Failed to generate employee ID:", error);
+                }
+              }}
+              className="whitespace-nowrap"
+            >
+              Generate
+            </Button>
+          </div>
           {errors.employeeId && (
             <p className="text-sm text-red-500 mt-1">{errors.employeeId.message}</p>
           )}
@@ -801,7 +830,7 @@ function BasicInfoForm({
                   <SelectValue placeholder="Select system role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="OPERATOR">Operator</SelectItem>
+                  <SelectItem value="OPERATOR">Employee</SelectItem>
                   <SelectItem value="MANAGER">Manager</SelectItem>
                   <SelectItem value="PROJECT_MANAGER">Project Manager</SelectItem>
                 </SelectContent>
@@ -810,6 +839,34 @@ function BasicInfoForm({
           />
         </div>
       </div>
+
+      {/* Department field - Conditional based on Access Role */}
+      {(watch("accessRole") === "MANAGER" || watch("accessRole") === "OPERATOR") && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <Label>Department {watch("accessRole") === "MANAGER" || watch("accessRole") === "OPERATOR" ? "*" : ""}</Label>
+            <input
+              {...register("department")}
+              className="input-base w-full p-1 border-none outline-gray-100"
+              placeholder="e.g., HR, Engineering, Sales"
+              autoCapitalize="none"
+              autoComplete="off"
+              onBlur={(e) => {
+                // Normalize to uppercase for case-insensitive storage
+                const normalized = e.target.value.trim().toUpperCase();
+                setValue("department", normalized, { shouldValidate: true });
+              }}
+            />
+            {errors.department && (
+              <p className="text-sm text-red-500 mt-1">{errors.department.message}</p>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">
+              Department names are case-insensitive (e.g., "HR" and "hr" are treated the same)
+            </p>
+          </div>
+          <div /> {/* Empty div for grid alignment */}
+        </div>
+      )}
     </div>
   );
 }
@@ -1286,6 +1343,7 @@ function AssetsForm({
   assets,
   setAssets,
   onValidityChange,
+  employeeId,
 }: {
   assets: {
     laptopBrand?: string;
@@ -1312,6 +1370,7 @@ function AssetsForm({
     }>
   >;
   onValidityChange: (v: boolean) => void;
+  employeeId?: string;
 }) {
   type AssetsFormType = z.infer<typeof assetsSchema>;
 
@@ -1322,6 +1381,7 @@ function AssetsForm({
     register,
     watch,
     trigger,
+    setValue,
     formState: { errors, isValid },
   } = useForm<AssetsFormType>({
     resolver: zodResolver(assetsSchema),
@@ -1460,11 +1520,29 @@ function AssetsForm({
           </div>
 
           <div>
-            <Label>ID Number</Label>
-            <input
-              {...register("idNumber", { setValueAs: emptyToUndefined })}
-              className="input-base mt-1 w-full p-1 border-none outline-gray-100"
-            />
+            <Label>ID Number (ID Card Number)</Label>
+            <div className="flex gap-2">
+              <input
+                {...register("idNumber", { setValueAs: emptyToUndefined })}
+                className="input-base mt-1 w-full p-1 border-none outline-gray-100"
+                placeholder="Click Generate to copy Employee ID"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  if (employeeId) {
+                    setValue("idNumber", employeeId, { shouldValidate: true });
+                  } else {
+                    console.warn("Employee ID not found. Please generate it in Basic Info first.");
+                  }
+                }}
+                className="whitespace-nowrap mt-1"
+                disabled={!employeeId}
+              >
+                Generate
+              </Button>
+            </div>
             {errors.idNumber && (
               <p className="text-sm text-red-500 mt-1">
                 {errors.idNumber.message}

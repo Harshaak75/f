@@ -6,7 +6,7 @@ export async function assignRealmRole(
   keycloakUserId: string,
   roleName: "OPERATOR" | "MANAGER" | "PROJECT_MANAGER"
 ) {
-  const { accessToken, realm, adminBaseUrl } =
+  let { accessToken, realm, adminBaseUrl } =
     await getTenantAdminToken(tenantId);
 
   // 1️⃣ Fetch role representation

@@ -63,12 +63,30 @@ router.put("/policies/:id", protect, async (req, res) => {
   const { name, defaultDays } = req.body;
 
   try {
-    const updated = await prisma.leavePolicy.update({
-      where: { id: req.params.id },
-      data: { name, defaultDays },
+    // Use a transaction to update both the policy and all related balances
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Update the leave policy
+      const updated = await tx.leavePolicy.update({
+        where: { id: req.params.id },
+        data: { name, defaultDays },
+      });
+
+      // 2. Update all existing leave balances for this policy
+      // This ensures employees see the updated balance immediately
+      await tx.leaveBalance.updateMany({
+        where: {
+          policyId: req.params.id,
+          tenantId: tenantId,
+        },
+        data: {
+          daysAllotted: defaultDays,
+        },
+      });
+
+      return updated;
     });
 
-    res.json(updated);
+    res.json(result);
   } catch (e) {
     console.log(e);
     res.status(500).json({ message: "Failed to update leave policy" });

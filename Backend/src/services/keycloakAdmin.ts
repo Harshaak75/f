@@ -8,8 +8,10 @@ export async function getTenantAdminToken(tenantId: string): Promise<{
 }> {
   const kc = await getTenantKeycloakConfig(tenantId);
 
+  let tokenUrl = kc.tokenUrl;
+
   const res = await axios.post(
-    kc.tokenUrl,
+    tokenUrl,
     new URLSearchParams({
       grant_type: "client_credentials",
       client_id: kc.clientId,

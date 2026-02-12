@@ -195,6 +195,7 @@ model EmployeeProfile {
   emergencyContactName  String? // NEW
   emergencyContactPhone String? // RENAMED
   designation           String
+  department            String? // Department name (stored in uppercase for consistency)
   dateOfBirth           DateTime
   joiningDate           DateTime
   employeeType          String

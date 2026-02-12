@@ -14,6 +14,7 @@ export interface CreateOnboardingPayload {
   emergencyContactName?: string;
   emergencyContactPhone?: string;
   designation: string;
+  department?: string; // Department field
   joiningDate: string; // yyyy-mm-dd
   employeeType: string; // full-time | part-time | contractor
   dateOfBirth: string; // yyyy-mm-dd
@@ -249,6 +250,11 @@ export const employeeFunctionalityService = {
     );
     return data; // { message, asset }
   },
+
+  generateEmployeeId: async (): Promise<{ employeeId: string }> => {
+    const { data } = await apiClient.get("/employee/generate-employee-id");
+    return data; // { employeeId, breakdown }
+  },
 };
 
 export const EmployeeDirectoryList = {
@@ -324,6 +330,11 @@ export const EmployeeDirectoryList = {
 
   deleteAsset: async (assetId: string) => {
     const { data } = await apiClient.delete(`/employee/assets/${assetId}`);
+    return data;
+  },
+
+  getAttendanceSummary: async (userId: string) => {
+    const { data } = await apiClient.get(`/employee/attendance-summary/${userId}`);
     return data;
   },
 };
