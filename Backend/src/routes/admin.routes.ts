@@ -84,12 +84,12 @@ router.get('/', protect, async (req, res) => {
             }`.trim(),
           department: request.user.employeeProfile?.designation || 'N/A',
           leaveType: request.policy.name,
-          startDate: request.startDate.toISOString().split('T')[0],
-          endDate: request.endDate.toISOString().split('T')[0],
+          startDate: new Date(request.startDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }),
+          endDate: new Date(request.endDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }),
           days: request.days,
           reason: request.reason,
           status: request.status,
-          appliedDate: request.appliedDate.toISOString().split('T')[0],
+          appliedDate: new Date(request.appliedDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" }),
           // This is the extra data you asked for:
           balanceInfo: {
             daysAllotted: balance?.daysAllotted || 0,
@@ -250,9 +250,9 @@ router.post('/:requestId/approve', protect, async (req, res) => {
     <p>Your leave request has been <strong>approved</strong>.</p>
     <p>
       <strong>Leave Period:</strong>
-      ${updatedRequest.startDate.toISOString().split('T')[0]}
+      ${new Date(updatedRequest.startDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
       to
-      ${updatedRequest.endDate.toISOString().split('T')[0]}
+      ${new Date(updatedRequest.endDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
     </p>
     <p>Regards,<br/>HR Team</p>
   `
@@ -294,7 +294,7 @@ router.post('/:requestId/reject', protect, async (req, res) => {
     return res.status(400).json({ message: 'Rejection reason is required.' });
   }
 
-   try {
+  try {
     const updatedRequest = await prisma.$transaction(async (tx) => {
       const request = await tx.leaveRequest.findFirst({
         where: {
@@ -320,7 +320,7 @@ router.post('/:requestId/reject', protect, async (req, res) => {
       });
 
       // 3. Log this action
-     await tx.activityLog.create({
+      await tx.activityLog.create({
         data: {
           tenantId,
           action: 'LEAVE_REJECTED',
@@ -335,63 +335,62 @@ router.post('/:requestId/reject', protect, async (req, res) => {
       return rejectedRequest;
     });
 
-try {
-  const employee = await prisma.user.findFirst({
-    where: {
-      id: updatedRequest.userId,
-      tenantId: tenantId,
-    },
-    select: {
-      email: true,
-      employeeProfile: {
-        select: {
-          firstName: true,
-          lastName: true,
+    try {
+      const employee = await prisma.user.findFirst({
+        where: {
+          id: updatedRequest.userId,
+          tenantId: tenantId,
         },
-      },
-    },
-  });
+        select: {
+          email: true,
+          employeeProfile: {
+            select: {
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      });
 
-  if (!employee || !employee.email) {
-    console.warn(
-      `Leave rejected but email not sent: Employee email not found for userId ${updatedRequest.userId}`
-    );
-  } else {
-    const employeeName = `${employee.employeeProfile?.firstName || ''} ${
-      employee.employeeProfile?.lastName || ''
-    }`.trim();
+      if (!employee || !employee.email) {
+        console.warn(
+          `Leave rejected but email not sent: Employee email not found for userId ${updatedRequest.userId}`
+        );
+      } else {
+        const employeeName = `${employee.employeeProfile?.firstName || ''} ${employee.employeeProfile?.lastName || ''
+          }`.trim();
 
-    await sendEmail(
-      employee.email,
-      'Your leave request has been rejected',
-      `
+        await sendEmail(
+          employee.email,
+          'Your leave request has been rejected',
+          `
         <p>Hello ${employeeName || 'Employee'},</p>
         <p>Your leave request has been <strong style="color:red;">rejected</strong>.</p>
 
         <p>
           <strong>Leave Period:</strong>
-          ${updatedRequest.startDate.toISOString().split('T')[0]}
+          ${new Date(updatedRequest.startDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
           to
-          ${updatedRequest.endDate.toISOString().split('T')[0]}
+          ${new Date(updatedRequest.endDate).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}
         </p>
 
         <p><strong>Reason:</strong> ${adminNotes}</p>
 
         <p>Regards,<br/>HR Team</p>
       `
-    );
-  }
-} catch (emailError) {
-  console.error(
-    `Error while sending leave rejection email for requestId ${updatedRequest.id}:`,
-    emailError
-  );
-}
+        );
+      }
+    } catch (emailError) {
+      console.error(
+        `Error while sending leave rejection email for requestId ${updatedRequest.id}:`,
+        emailError
+      );
+    }
 
 
 
     res.status(200).json(updatedRequest);
-  //
+    //
 
   } catch (error: any) {
     console.error('Failed to reject leave:', error);

@@ -243,6 +243,13 @@ export default function ProfileManagement(): JSX.Element {
   const [offerSaving, setOfferSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  // Attendance
+  const [attendanceSummary, setAttendanceSummary] = useState<any>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+
+  // Asset deletion dialog
+  const [assetToDelete, setAssetToDelete] = useState<string | null>(null);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -296,6 +303,31 @@ export default function ProfileManagement(): JSX.Element {
     };
   }, [profileId, toast]);
 
+  // Fetch attendance summary when employee is loaded
+  useEffect(() => {
+    if (!selectedEmployee?.userId) return;
+
+    let mounted = true;
+    (async () => {
+      try {
+        setAttendanceLoading(true);
+        const data = await EmployeeDirectoryList.getAttendanceSummary(selectedEmployee.userId);
+        if (mounted) {
+          setAttendanceSummary(data);
+        }
+      } catch (e: any) {
+        console.error("Failed to load attendance:", e);
+        // Don't show error toast, just leave it empty
+      } finally {
+        if (mounted) setAttendanceLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedEmployee?.userId]);
+
   if (loading) return <ProfileSkeleton />;
   if (err) return <div className="p-6 text-sm text-red-600">{err}</div>;
   if (!selectedEmployee)
@@ -327,10 +359,22 @@ export default function ProfileManagement(): JSX.Element {
           selectedEmployee.id,
           payload
         );
-        // backend returns updatedEmployee (partial) — merge
-        setSelectedEmployee((s) =>
-          s ? ({ ...s, ...updated } as EmployeeCombined) : s
-        );
+
+        // 🔄 Refetch the full employee data to ensure UI is in sync
+        const refreshedEmployee = await EmployeeDirectoryList.getByProfileId(selectedEmployee.id);
+        if (refreshedEmployee) {
+          setSelectedEmployee(refreshedEmployee);
+          // Update forms with fresh data
+          setPersonalForm({
+            firstName: refreshedEmployee.firstName ?? "",
+            lastName: refreshedEmployee.lastName ?? "",
+            phone: refreshedEmployee.phone ?? "",
+            personalEmail: refreshedEmployee.personalEmail ?? "",
+            emergencyContactName: refreshedEmployee.emergencyContactName ?? "",
+            emergencyContactPhone: refreshedEmployee.emergencyContactPhone ?? "",
+            dateOfBirth: refreshedEmployee.dateOfBirth ?? "",
+          });
+        }
       } else {
         // optimistic
         setSelectedEmployee((s) =>
@@ -362,9 +406,19 @@ export default function ProfileManagement(): JSX.Element {
           selectedEmployee.id,
           payload
         );
-        setSelectedEmployee((s) =>
-          s ? ({ ...s, ...updated } as EmployeeCombined) : s
-        );
+
+        // 🔄 Refetch the full employee data to ensure UI is in sync
+        const refreshedEmployee = await EmployeeDirectoryList.getByProfileId(selectedEmployee.id);
+        if (refreshedEmployee) {
+          setSelectedEmployee(refreshedEmployee);
+          // Update forms with fresh data
+          setEmploymentForm({
+            designation: refreshedEmployee.designation ?? "",
+            employeeType: refreshedEmployee.employeeType ?? "",
+            joiningDate: refreshedEmployee.joiningDate ?? "",
+            employeeId: refreshedEmployee.employeeId ?? "",
+          });
+        }
       } else {
         setSelectedEmployee((s) =>
           s ? ({ ...s, ...payload } as EmployeeCombined) : s
@@ -562,7 +616,7 @@ export default function ProfileManagement(): JSX.Element {
     try {
       const payload = { ...assetForm };
       const created = await EmployeeDirectoryList.addAsset(
-        selectedEmployee.id,
+        selectedEmployee.userId, // ✅ Use userId, not profile id
         payload
       );
       setAssetsLocal((l = []) => [...(l ?? []), created]);
@@ -587,7 +641,6 @@ export default function ProfileManagement(): JSX.Element {
 
   async function handleDeleteAsset(assetId?: string) {
     if (!assetId) return;
-    if (!window.confirm("Delete this asset assignment?")) return;
     try {
       await EmployeeDirectoryList.deleteAsset(assetId);
       setAssetsLocal((l = []) =>
@@ -601,6 +654,7 @@ export default function ProfileManagement(): JSX.Element {
           } as EmployeeCombined)
           : s
       );
+      setAssetToDelete(null); // Close dialog
       toast({ title: "Deleted", description: "Asset removed." });
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.message || "Delete failed.";
@@ -639,7 +693,7 @@ export default function ProfileManagement(): JSX.Element {
     if (!selectedEmployee) return;
     setOfferSaving(true);
     try {
-      const userId = selectedEmployee.id;
+      const userId = selectedEmployee.userId; // ✅ Use userId, not profile id
       const payload = { ...offerForm };
       const updated = await EmployeeDirectoryList.updateOffer(userId, payload);
       // backend returns updated; merge into state
@@ -1319,23 +1373,114 @@ export default function ProfileManagement(): JSX.Element {
 
           {/* ---------------- ATTENDANCE ---------------- */}
           <TabsContent value="attendance" className="mt-6">
-            <div className="grid grid-cols-3 gap-4">
-              <Card className="p-6">
-                <Clock className="h-6 w-6 text-primary mb-2" />
-                <h4 className="text-sm text-muted-foreground">Total Days</h4>
-                <p className="text-3xl font-semibold mt-1">—</p>
-              </Card>
-              <Card className="p-6">
-                <Activity className="h-6 w-6 text-green-600 mb-2" />
-                <h4 className="text-sm text-muted-foreground">Present</h4>
-                <p className="text-3xl font-semibold mt-1">—</p>
-              </Card>
-              <Card className="p-6">
-                <Activity className="h-6 w-6 text-destructive mb-2" />
-                <h4 className="text-sm text-muted-foreground">Absent</h4>
-                <p className="text-3xl font-semibold mt-1">—</p>
-              </Card>
-            </div>
+            {attendanceLoading ? (
+              <div className="p-6 text-sm text-muted-foreground">Loading attendance...</div>
+            ) : attendanceSummary ? (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-semibold">
+                    {attendanceSummary.currentMonth?.month} {attendanceSummary.currentMonth?.year} Overview
+                  </h3>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <Card className="p-6">
+                    <Clock className="h-6 w-6 text-primary mb-2" />
+                    <h4 className="text-sm text-muted-foreground">Total Days</h4>
+                    <p className="text-3xl font-semibold mt-1">
+                      {attendanceSummary.summary?.totalDays || 0}
+                    </p>
+                  </Card>
+                  <Card className="p-6">
+                    <Activity className="h-6 w-6 text-green-600 mb-2" />
+                    <h4 className="text-sm text-muted-foreground">Present</h4>
+                    <p className="text-3xl font-semibold mt-1 text-green-600">
+                      {attendanceSummary.summary?.presentDays || 0}
+                    </p>
+                  </Card>
+                  <Card className="p-6">
+                    <Activity className="h-6 w-6 text-destructive mb-2" />
+                    <h4 className="text-sm text-muted-foreground">Absent</h4>
+                    <p className="text-3xl font-semibold mt-1 text-destructive">
+                      {attendanceSummary.summary?.absentDays || 0}
+                    </p>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <Card className="p-6">
+                    <h4 className="text-sm text-muted-foreground">Half Days</h4>
+                    <p className="text-2xl font-semibold mt-1">
+                      {attendanceSummary.summary?.halfDays || 0}
+                    </p>
+                  </Card>
+                  <Card className="p-6">
+                    <h4 className="text-sm text-muted-foreground">Leave Days</h4>
+                    <p className="text-2xl font-semibold mt-1">
+                      {attendanceSummary.summary?.leaveDays || 0}
+                    </p>
+                  </Card>
+                  <Card className="p-6">
+                    <h4 className="text-sm text-muted-foreground">Hours Worked</h4>
+                    <p className="text-2xl font-semibold mt-1">
+                      {attendanceSummary.summary?.totalHoursWorked || 0}h
+                    </p>
+                  </Card>
+                </div>
+
+                <Card className="p-6">
+                  <h4 className="font-semibold mb-4">Recent Activity</h4>
+                  {attendanceSummary.recentRecords?.length > 0 ? (
+                    <div className="space-y-2">
+                      {attendanceSummary.recentRecords.map((record: any) => (
+                        <div
+                          key={record.id}
+                          className="flex justify-between items-center py-2 border-b last:border-0"
+                        >
+                          <div>
+                            <p className="font-medium">
+                              {new Date(record.date).toLocaleDateString("en-IN", {
+                                weekday: "short",
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </p>
+                            {record.notes && (
+                              <p className="text-sm text-muted-foreground">{record.notes}</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <Badge
+                              variant={
+                                record.status === "PRESENT"
+                                  ? "default"
+                                  : record.status === "ABSENT"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                            >
+                              {record.status}
+                            </Badge>
+                            {record.hoursWorked && (
+                              <p className="text-sm text-muted-foreground mt-1">
+                                {record.hoursWorked}h
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No recent attendance records.</p>
+                  )}
+                </Card>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                No attendance data available for this month.
+              </div>
+            )}
           </TabsContent>
 
           {/* ---------------- ASSETS ---------------- */}
@@ -1371,9 +1516,8 @@ export default function ProfileManagement(): JSX.Element {
                 ) : (
                   <Button
                     onClick={() => {
-                      setAssetAdding(true);
-                      setAssetEditId(null);
-                      resetAssetForm();
+                      resetAssetForm(); // Resets everything including setting assetAdding to false
+                      setAssetAdding(true); // Now set it to true so the form actually shows up
                     }}
                   >
                     <Plus className="mr-2 h-4 w-4" /> Assign Asset
@@ -1552,7 +1696,7 @@ export default function ProfileManagement(): JSX.Element {
                       <Button
                         variant="destructive"
                         size="sm"
-                        onClick={() => handleDeleteAsset(asset.id)}
+                        onClick={() => setAssetToDelete(asset.id)}
                       >
                         <Trash2 className="mr-2 h-4 w-4" /> Delete
                       </Button>
@@ -1565,6 +1709,27 @@ export default function ProfileManagement(): JSX.Element {
                 No assets assigned.
               </div>
             )}
+
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog open={!!assetToDelete} onOpenChange={(open) => !open && setAssetToDelete(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Asset</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete this asset assignment? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => setAssetToDelete(null)}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => assetToDelete && handleDeleteAsset(assetToDelete)}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </TabsContent>
 
           {/* ---------------- ACTIVITY ---------------- */}

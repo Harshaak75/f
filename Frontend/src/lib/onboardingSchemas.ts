@@ -6,23 +6,32 @@ export const basicInfoSchema = z.object({
   name: z.string().min(1, "Display name is required"),
   email: z.string().email("Invalid email address"),
   password: z.string().min(6, "Password must be minimum 6 characters"),
-  personalEmail: z.string().email().optional().or(z.literal("")),
+  personalEmail: z.string().min(1, "Personal email is required").email("Invalid personal email address"),
   phone: z
     .string()
-    .regex(/^[6-9]\d{9}$/, "Invalid Indian phone number"),
+    .regex(/^[6-9]\d{9}$/, "Invalid phone number. Must be 10 digits starting with 6-9"),
   altPhone: z.string()
-    .regex(/^[6-9]\d{9}$/, "Invalid Indian phone number"),
-  emergencyContactName: z.string(),
+    .regex(/^[6-9]\d{9}$/, "Invalid alternate phone number. Must be 10 digits starting with 6-9"),
+  emergencyContactName: z.string().min(1, "Emergency contact name is required"),
   emergencyContactPhone: z
     .string()
-    .regex(/^[6-9]\d{9}$/, "Invalid phone")
-    .or(z.literal("")),
+    .regex(/^[6-9]\d{9}$/, "Invalid emergency phone. Must be 10 digits starting with 6-9"),
   designation: z.string().min(1, "Designation is required"),
+  department: z.string().optional(), // Department field
   employeeId: z.string().min(1, "Employee ID is required"),
   joiningDate: z.string().min(1, "Joining date is required"),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
   employeeType: z.enum(["full-time", "part-time", "contractor"]),
   accessRole: z.enum(["OPERATOR", "MANAGER", "PROJECT_MANAGER"]),
+}).refine((data) => {
+  // Department is required for MANAGER and OPERATOR
+  if ((data.accessRole === "MANAGER" || data.accessRole === "OPERATOR") && !data.department) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Department is required for Manager and Employee roles",
+  path: ["department"],
 });
 
 // export const documentsSchema = z.object({
