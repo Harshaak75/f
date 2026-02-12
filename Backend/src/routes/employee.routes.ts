@@ -13,6 +13,9 @@ import { createKeycloakUser } from "../services/keycloakUsers";
 import { assignRealmRole } from "../services/keycloakRoles";
 import { exportExcel } from "../utils/Exports/exportExcel.attendance";
 import { exportPDF } from "../utils/Exports/exportPDF.attendance";
+import { sendEmail } from "../utils/email.utils";
+import { employeeLeaveAppliedTemplate } from "../htmlTemplate/employeeLeaveTemplate";
+import { hrLeaveRequestTemplate } from "../htmlTemplate/hrLeaveRequest";
 
 const router = express.Router();
 
@@ -25,6 +28,66 @@ const multerUpload = multer({
 });
 
 const BUCKET_NAME = "PersonalData";
+
+/**
+ * GET /api/employees/generate-employee-id
+ * Protected Route: Only ADMINs can access this.
+ * Generates a unique Employee ID in the format: DOT0226008
+ * Format: [CompanyCode][Month][Year][SequentialNumber]
+ */
+router.get("/generate-employee-id", protect, async (req, res) => {
+  const { tenantId, role } = req.user!;
+
+  if (role !== Role.ADMIN) {
+    return res
+      .status(403)
+      .json({ message: "Forbidden: Only admins can generate employee IDs." });
+  }
+
+  try {
+    // 1. Get tenant information (company name)
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
+    });
+
+    if (!tenant) {
+      return res.status(404).json({ message: "Tenant not found." });
+    }
+
+    // 2. Extract first 3 letters of company name (uppercase)
+    const companyCode = tenant.name.substring(0, 3).toUpperCase();
+
+    // 3. Get current month and year
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, "0"); // 01-12
+    const year = String(now.getFullYear()).slice(-2); // Last 2 digits of year
+
+    // 4. Count existing employees for this tenant to get sequential number
+    const employeeCount = await prisma.employeeProfile.count({
+      where: { tenantId },
+    });
+
+    // 5. Increment count and pad to 3 digits
+    const sequentialNumber = String(employeeCount + 1).padStart(3, "0");
+
+    // 6. Construct Employee ID
+    const employeeId = `${companyCode}${month}${year}${sequentialNumber}`;
+
+    res.status(200).json({
+      employeeId,
+      breakdown: {
+        companyCode,
+        month,
+        year,
+        sequentialNumber,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to generate employee ID:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
 
 /**
  * POST /api/employees/create-onboarding
@@ -54,6 +117,7 @@ router.post("/create-onboarding", protect, async (req, res) => {
     emergencyContactName,
     emergencyContactPhone,
     designation,
+    department, // Department name
     joiningDate, // "YYYY-MM-DD"
     employeeType,
     dateOfBirth, // "YYYY-MM-DD"
@@ -80,6 +144,16 @@ router.post("/create-onboarding", protect, async (req, res) => {
   if (!accessRole) {
     return res.status(400).json({ message: "Access role is required" });
   }
+
+  // Validate department requirement based on access role
+  if ((accessRole === "MANAGER" || accessRole === "OPERATOR") && !department) {
+    return res.status(400).json({
+      message: "Department is required for Manager and Employee roles"
+    });
+  }
+
+  // Normalize department to uppercase for case-insensitive storage
+  const normalizedDepartment = department ? department.trim().toUpperCase() : null;
 
   // Normalize date-only strings to IST midnight to avoid TZ shifts
   const toISTMidnight = (ymd: string) => new Date(`${ymd}T00:00:00+05:30`);
@@ -120,6 +194,7 @@ router.post("/create-onboarding", protect, async (req, res) => {
               emergencyContactName,
               emergencyContactPhone,
               designation,
+              department: normalizedDepartment,
               joiningDate: joiningDateIso,
               employeeType,
               accessRole,
@@ -142,6 +217,7 @@ router.post("/create-onboarding", protect, async (req, res) => {
               emergencyContactName,
               emergencyContactPhone,
               designation,
+              department: normalizedDepartment,
               joiningDate: joiningDateIso,
               employeeType,
             },
@@ -180,6 +256,7 @@ router.post("/create-onboarding", protect, async (req, res) => {
           emergencyContactName,
           emergencyContactPhone,
           designation,
+          department: normalizedDepartment,
           joiningDate: joiningDateIso,
           employeeType,
           accessRole,
@@ -233,9 +310,16 @@ router.post(
   multerUpload.array("files", 10), // up to 10 files; adjust as needed
   async (req, res) => {
     const { tenantId, role } = req.user!;
-    const { profileId } = req.body.profileId;
+    const profileId = req.body.profileId;
     const docTypesRaw = req.body.documentType;
     const files = req.files as Express.Multer.File[];
+
+    // 🔍 DEBUG: Log what we received
+    console.log("📄 Document Upload Request:");
+    console.log("  - profileId:", profileId);
+    console.log("  - docTypesRaw:", docTypesRaw);
+    console.log("  - files count:", files?.length);
+    console.log("  - req.body:", req.body);
 
     if (role !== Role.ADMIN) {
       return res
@@ -341,6 +425,10 @@ router.post(
 
         results.push({ documentType, fileName, storagePath, id: row.id });
       }
+
+      console.log("✅ Documents saved successfully:", results.length, "files");
+      console.log("   User ID:", userId);
+      console.log("   Documents:", results.map(r => r.documentType).join(", "));
 
       return res.status(201).json({
         message: "Documents saved successfully.",
@@ -496,7 +584,7 @@ router.post("/:profileId/offer", protect, async (req, res) => {
       .json({ message: "Forbidden: Only admins can add offer details." });
   }
 
-  // 1️⃣ Fetch profile + tenantCode + accessRole
+  // 1️⃣ Fetch profile + tenantCode + accessRole + department
   const profile: any = await prisma.employeeProfile.findFirst({
     where: { id: profileId, tenantId },
     select: {
@@ -505,6 +593,7 @@ router.post("/:profileId/offer", protect, async (req, res) => {
       lastName: true,
       personalEmail: true,
       accessRole: true,
+      department: true, // Include department
       user: {
         select: { email: true },
       },
@@ -551,11 +640,12 @@ router.post("/:profileId/offer", protect, async (req, res) => {
   });
 
   if (!existingIdentity) {
-    // 4️⃣ Create Keycloak user
+    // 4️⃣ Create Keycloak user with department information
     const kcUser: any = await createKeycloakUser(tenantId, {
       email: userEmail,
       firstName: profile.firstName,
       lastName: profile.lastName,
+      department: profile.department || undefined, // Pass department to Keycloak
     });
 
     // 5️⃣ Assign roles (BUSINESS + TENANT)
@@ -575,6 +665,7 @@ router.post("/:profileId/offer", protect, async (req, res) => {
         userId: profile.userId,
       },
     });
+
   }
 
   return res.status(201).json({
@@ -1185,14 +1276,9 @@ router.get("/getLeave", protect, async (req, res) => {
  */
 router.post("/ApplyLeave", protect, async (req, res) => {
   const { userId, tenantId, role } = req.user!;
+  console.log("userId: ", userId, "tenantId: ", tenantId)
 
-  // if (role !== Role.EMPLOYEE) {
-  //   return res
-  //     .status(403)
-  //     .json({ message: "Forbidden: This route is for employees." });
-  // }
-
-  const {
+  let {
     policyId, // ID of the LeavePolicy (e.g., "Casual Leave")
     startDate, // "2025-01-20"
     endDate, // "2025-01-22"
@@ -1203,6 +1289,8 @@ router.post("/ApplyLeave", protect, async (req, res) => {
   if (!policyId || !startDate || !endDate || !days || !reason) {
     return res.status(400).json({ message: "Missing required fields." });
   }
+
+  console.log("policyId: ", policyId, "startDate: ", startDate, "endDate: ", endDate, "days: ", days, "reason: ", reason)
 
   const currentYear = new Date(startDate).getFullYear();
 
@@ -1218,6 +1306,8 @@ router.post("/ApplyLeave", protect, async (req, res) => {
         },
       },
     });
+
+    console.log("balance: ", balance)
 
     // 2. Check if they have enough days
     const remainingDays = balance ? balance.daysAllotted - balance.daysUsed : 0;
@@ -1246,6 +1336,91 @@ router.post("/ApplyLeave", protect, async (req, res) => {
     // 4. TODO: Send a notification to the HR Admin (e.g., email) new leave request
     // 5. TODO: Send a notification to the employee (e.g., email) applied
     // 6. TODO: Send a notification to the hr (e.g., email) new leave request
+
+    const employeeData = await prisma.user.findUnique({
+      where: {
+        id: userId,
+        tenantId,
+      },
+      select: {
+        name: true,
+        email: true,
+
+      }
+    })
+
+    if (!employeeData) {
+      return res.status(404).json({ message: "Employee not found." });
+    }
+
+    const companyName = await prisma.tenant.findUnique({
+      where: {
+        id: tenantId,
+      },
+      select: {
+        name: true,
+      },
+    });
+
+    if (!companyName) {
+      return res.status(404).json({ message: "Company not found." });
+    }
+
+    const formattedStartDate = new Date(startDate)
+      .toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+
+    const formattedEndDate = new Date(endDate)
+      .toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" });
+
+    try {
+      await sendEmail(
+        employeeData.email,
+        `Leave Request Submitted`,
+        employeeLeaveAppliedTemplate({
+          employeeName: employeeData.name,
+          startDate: formattedStartDate,
+          endDate: formattedEndDate,
+          days,
+          reason,
+          companyName: companyName.name,
+        })
+      );
+      console.log("✅ Leave email sent to:", employeeData.email);
+    } catch (error) {
+      console.error("Failed to send leave email:", error);
+    }
+
+
+
+    const hrUsers = await prisma.user.findMany({
+      where: {
+        tenantId: tenantId,
+        role: {
+          in: ["ADMIN"], // or just ADMIN if HR = ADMIN
+        },
+      },
+      select: {
+        email: true,
+        id: true,
+      },
+    });
+
+
+    for (const hr of hrUsers) {
+      await sendEmail(
+        hr.email,
+        `New Leave Request – ${employeeData.name}`,
+        hrLeaveRequestTemplate({
+          employeeName: employeeData.name,
+          employeeEmail: employeeData.email,
+          startDate: formattedStartDate,
+          endDate: formattedEndDate,
+          days,
+          reason,
+          companyName: companyName.name,
+        })
+      );
+    }
 
     res
       .status(201)
@@ -1928,6 +2103,66 @@ router.put("/offer/:userId", protect, async (req, res) => {
     res.json({ message: "Offer updated", updated });
   } catch (err) {
     res.status(500).json({ message: "Offer update failed", error: err });
+  }
+});
+
+/**
+ * GET /api/employees/attendance-summary/:userId
+ * Get attendance summary for a specific employee (current month)
+ */
+router.get("/attendance-summary/:userId", protect, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { tenantId } = req.user!;
+
+    // Get current month start and end dates
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // Fetch attendance records for the current month
+    const records = await prisma.attendanceRecord.findMany({
+      where: {
+        userId,
+        tenantId,
+        date: {
+          gte: currentMonthStart,
+          lte: currentMonthEnd,
+        },
+      },
+      orderBy: {
+        date: "desc",
+      },
+    });
+
+    // Calculate summary
+    const totalDays = records.length;
+    const presentDays = records.filter((r) => r.status === "PRESENT").length;
+    const absentDays = records.filter((r) => r.status === "ABSENT").length;
+    const halfDays = records.filter((r) => r.status === "HALF_DAY").length;
+    const leaveDays = records.filter((r) => r.status === "LEAVE").length;
+
+    // Calculate total hours worked
+    const totalHoursWorked = records.reduce((sum, r) => sum + (r.hoursWorked || 0), 0);
+
+    res.json({
+      summary: {
+        totalDays,
+        presentDays,
+        absentDays,
+        halfDays,
+        leaveDays,
+        totalHoursWorked: Math.round(totalHoursWorked * 10) / 10, // Round to 1 decimal
+      },
+      currentMonth: {
+        month: now.toLocaleString("en-US", { month: "long" }),
+        year: now.getFullYear(),
+      },
+      recentRecords: records.slice(0, 10), // Last 10 records
+    });
+  } catch (error) {
+    console.error("Failed to fetch attendance summary:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 });
 

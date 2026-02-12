@@ -6,8 +6,15 @@ export async function assignRealmRole(
   keycloakUserId: string,
   roleName: "OPERATOR" | "MANAGER" | "PROJECT_MANAGER"
 ) {
-  const { accessToken, realm, adminBaseUrl } =
+  let { accessToken, realm, adminBaseUrl } =
     await getTenantAdminToken(tenantId);
+
+
+  console.log("adminBaseUrl1", adminBaseUrl);
+
+  if (adminBaseUrl == "http://keycloak:8080") {
+    adminBaseUrl = "http://194.163.139.103:8090"
+  }
 
   // 1️⃣ Fetch role representation
   const roleRes = await axios.get(

@@ -38,9 +38,8 @@ export function formatPayslipHtml(payslip: PayslipData): string {
       <table style="width: 100%;">
         <tr>
           <td style="padding: 5px 0;"><strong>Employee Name:</strong></td>
-          <td style="padding: 5px 0;">${profile?.firstName || ''} ${
-    profile?.lastName || ''
-  }</td>
+          <td style="padding: 5px 0;">${profile?.firstName || ''} ${profile?.lastName || ''
+    }</td>
         </tr>
         <tr>
           <td style="padding: 5px 0;"><strong>Employee ID:</strong></td>
@@ -57,19 +56,19 @@ export function formatPayslipHtml(payslip: PayslipData): string {
           <h2 style="font-size: 1.2em; color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px;">Earnings</h2>
           <table style="width: 100%;">
             <tr><td style="padding: 5px 0;">Basic Salary</td><td style="text-align: right; padding: 5px 0;">${curr(
-              payslip.basicSalary
-            )}</td></tr>
+      payslip.basicSalary
+    )}</td></tr>
             <tr><td style="padding: 5px 0;">HRA</td><td style="text-align: right; padding: 5px 0;">${curr(
-              payslip.hra
-            )}</td></tr>
+      payslip.hra
+    )}</td></tr>
             <tr><td style="padding: 5px 0;">Allowances</td><td style="text-align: right; padding: 5px 0;">${curr(
-              payslip.allowances
-            )}</td></tr>
+      payslip.allowances
+    )}</td></tr>
             <tr style="font-weight: bold; border-top: 1px solid #ddd;">
               <td style="padding: 8px 0;">Gross Salary</td>
               <td style="text-align: right; padding: 8px 0;">${curr(
-                payslip.grossSalary
-              )}</td>
+      payslip.grossSalary
+    )}</td>
             </tr>
           </table>
         </div>
@@ -78,19 +77,19 @@ export function formatPayslipHtml(payslip: PayslipData): string {
           <h2 style="font-size: 1.2em; color: #333; border-bottom: 1px solid #eee; padding-bottom: 5px;">Deductions</h2>
           <table style="width: 100%;">
             <tr><td style="padding: 5px 0;">PF Contribution</td><td style="text-align: right; padding: 5px 0;">${curr(
-              payslip.pfDeduction
-            )}</td></tr>
+      payslip.pfDeduction
+    )}</td></tr>
             <tr><td style="padding: 5px 0;">Income Tax (TDS)</td><td style="text-align: right; padding: 5px 0;">${curr(
-              payslip.taxDeduction
-            )}</td></tr>
+      payslip.taxDeduction
+    )}</td></tr>
             <tr><td style="padding: 5px 0;">Leave Without Pay (LWP)</td><td style="text-align: right; padding: 5px 0;">${curr(
-              payslip.lwpDeduction
-            )}</td></tr>
+      payslip.lwpDeduction
+    )}</td></tr>
             <tr style="font-weight: bold; border-top: 1px solid #ddd;">
               <td style="padding: 8px 0;">Total Deductions</td>
               <td style="text-align: right; padding: 8px 0;">${curr(
-                payslip.otherDeductions + payslip.lwpDeduction
-              )}</td>
+      payslip.otherDeductions + payslip.lwpDeduction
+    )}</td>
             </tr>
           </table>
         </div>
@@ -99,8 +98,8 @@ export function formatPayslipHtml(payslip: PayslipData): string {
       <div style="background-color: #f9f9f9; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center;">
         <h3 style="margin: 0; font-size: 1.1em;">Net Salary</h3>
         <p style="font-size: 2em; font-weight: bold; color: #28a745; margin: 5px 0;">${curr(
-          payslip.netSalary
-        )}</p>
+      payslip.netSalary
+    )}</p>
       </div>
     </div>
   `;
@@ -115,7 +114,6 @@ export async function sendEmail(
   subject: string,
   html: string
 ): Promise<void> {
-  // If SMTP is not configured, fall back to dummy sender
   if (
     !process.env.SMTP_HOST ||
     !process.env.SMTP_PORT ||
@@ -134,22 +132,31 @@ export async function sendEmail(
   }
 
   const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: Number(process.env.SMTP_PORT) === 465, // true for 465, false otherwise
+    host: process.env.SMTP_HOST,          // mail.dotspeaks.com
+    port: Number(process.env.SMTP_PORT),  // 465
+    secure: false,                        // MUST be true for 465
     auth: {
-      user: process.env.SMTP_USER,
+      user: process.env.SMTP_USER,        // no-reply@dotspeaks.com
       pass: process.env.SMTP_PASS,
-    },
+    }
   });
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+  // ✅ Verify connection
+  await transporter.verify();
+  console.log("✅ SMTP verified");
+
+  const info = await transporter.sendMail({
+    from: `${process.env.SMTP_USER}`, // ⭐ IMPORTANT
     to,
     subject,
     html,
   });
+
+  console.log("📧 Message ID:", info.messageId);
+  console.log("📬 Accepted:", info.accepted);
+  console.log("🚫 Rejected:", info.rejected);
 }
+
 
 
 /**
@@ -186,7 +193,7 @@ export async function getFormattedPayslip(
   if (!payslip) {
     return null;
   }
-  
+
   // This is the correct workaround: Fetch the offer separately
   // using the userId from the payslip we just found.
   const offer = await prisma.offer.findUnique({
