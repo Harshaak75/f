@@ -4,7 +4,6 @@ import { internalAuth } from "../middleware/internalAuth";
 import prisma from "../prisma/client";
 
 const router = Router();
-
 /**
  * POST /internal/tenant/idp-config
  */
