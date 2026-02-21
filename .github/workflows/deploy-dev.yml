@@ -69,3 +69,4 @@ jobs:
             echo "  Frontend → http://${{ secrets.VPS_HOST }}:3001"
             echo "  Backend  → http://${{ secrets.VPS_HOST }}:5001"
             echo "======================================="
+            
