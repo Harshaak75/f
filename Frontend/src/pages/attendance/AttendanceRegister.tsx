@@ -483,10 +483,11 @@ export default function AttendanceRegister() {
               <SelectTrigger>
                 <SelectValue placeholder="Employee" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" className="max-h-72 overflow-y-auto">
                 <SelectItem value="all">All Employees</SelectItem>
-                {employees?.length > 0 &&
-                  employees.map((e) => (
+                {employees
+                  .filter((e) => e.employeeId && e.employeeId.trim() !== "")
+                  .map((e) => (
                     <SelectItem key={e.employeeId} value={e.employeeId!}>
                       {e.firstName} {e.lastName} ({e.employeeId})
                     </SelectItem>
@@ -502,15 +503,17 @@ export default function AttendanceRegister() {
               <SelectTrigger>
                 <SelectValue placeholder="Designation" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent position="popper" className="max-h-72 overflow-y-auto">
                 <SelectItem value="all">All Designations</SelectItem>
-                {[...new Set(employees.map((e) => e.designation).filter(Boolean))].map(
-                  (d) => (
-                    <SelectItem key={d} value={d!}>
-                      {d}
-                    </SelectItem>
-                  )
-                )}
+                {[...new Set(
+                  employees
+                    .map((e) => e.designation)
+                    .filter((d): d is string => !!d && d.trim() !== "")
+                )].map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 

@@ -16,9 +16,14 @@ export interface CreateOnboardingPayload {
   designation: string;
   department?: string; // Department field
   joiningDate: string; // yyyy-mm-dd
-  employeeType: string; // full-time | part-time | contractor
+  employeeType: string; // full-time | part-time | contractor | experienced
   dateOfBirth: string; // yyyy-mm-dd
   accessRole: "OPERATOR" | "MANAGER" | "PROJECT_MANAGER";
+  // Experienced-hire fields (present only when employeeType === 'experienced')
+  previousCompanyName?: string;
+  previousDesignation?: string;
+  reportingManagerName?: string;
+  reportingManagerContact?: string;
 }
 
 export interface OnboardingEmployee {

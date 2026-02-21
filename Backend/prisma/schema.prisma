@@ -202,6 +202,12 @@ model EmployeeProfile {
   accessRole            AccessRole @default(OPERATOR)
   isActive              Boolean    @default(true)
 
+  // --- EXPERIENCED HIRE FIELDS ---
+  previousCompanyName       String? // Name of the previous employer
+  previousDesignation       String? // Role held at previous company
+  reportingManagerName      String? // Previous reporting manager's name
+  reportingManagerContact   String? // Previous reporting manager's phone/email
+
   // Links
   userId   String @unique
   user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)

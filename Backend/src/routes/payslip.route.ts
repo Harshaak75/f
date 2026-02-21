@@ -4,10 +4,10 @@ import prisma from "../prisma/client";
 import { Role } from "@prisma/client";
 import {
   getFormattedPayslip,
-  formatPayslipHtml,
-  sendEmail,
+  sendPayslipEmail,
 } from "../utils/email.utils";
 import { generateSinglePayslipPdf } from "../utils/generatePayrollpdf.utils";
+
 
 const router = Router();
 
@@ -85,9 +85,8 @@ router.get("/payslips", protect, async (req, res) => {
       id: item.id, // This is the PayrollRunItem ID
       employeeId: item.user.employeeProfile?.employeeId || "N/A",
       employeeName:
-        `${item.user.employeeProfile?.firstName || ""} ${
-          item.user.employeeProfile?.lastName || ""
-        }`.trim() || "N/A",
+        `${item.user.employeeProfile?.firstName || ""} ${item.user.employeeProfile?.lastName || ""
+          }`.trim() || "N/A",
       month: monthName,
       year: year,
       basicSalary: item.basicSalary,
@@ -140,9 +139,8 @@ router.get("/:payslipId/download", protect, async (req, res) => {
 
     // 2. Set headers for PDF download
     const profile = payslipData.user.employeeProfile;
-    const filename = `Payslip-${payslipData.run.year}-${
-      payslipData.run.month
-    }-${profile?.employeeId || profile?.lastName}.pdf`;
+    const filename = `Payslip-${payslipData.run.year}-${payslipData.run.month
+      }-${profile?.employeeId || profile?.lastName}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
@@ -172,36 +170,37 @@ router.post("/:payslipId/send", protect, async (req, res) => {
   }
 
   try {
-    // 1. Get all the payslip data
+    // 1. Fetch payslip data
     const payslipData = await getFormattedPayslip(payslipId, tenantId!);
-
     if (!payslipData) {
       return res.status(404).json({ message: "Payslip not found." });
     }
 
-    // 2. Format the email content
-    const htmlBody = formatPayslipHtml(payslipData);
-    const monthName = new Date(
-      payslipData.run.year,
-      payslipData.run.month - 1
-    ).toLocaleString("default", { month: "long" });
-    const subject = `Your Salary Slip for ${monthName} ${payslipData.run.year}`;
+    // 2. Fetch company name for the email
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
+    });
+    const tenantName = tenant?.name || 'Your Company';
 
-    // 3. "Send" the email (using the dummy service)
-    await sendEmail(payslipData.user.email, subject, htmlBody);
+    // 3. Send rich HTML email with PDF attachment
+    await sendPayslipEmail(payslipData, tenantName);
 
-    // 4. Log this action
+    const monthName = new Date(payslipData.run.year, payslipData.run.month - 1)
+      .toLocaleString('default', { month: 'long' });
+
+    // 4. Activity log
     await prisma.activityLog.create({
       data: {
         tenantId: tenantId!,
         action: "PAYSLIP_SENT",
-        description: `Sent payslip for ${monthName} ${payslipData.run.year} to ${payslipData.user.email}`,
+        description: `Sent payslip for ${monthName} ${payslipData.run.year} to ${payslipData.user.employeeProfile?.personalEmail || payslipData.user.email}`,
         performedById: adminUserId!,
         targetUserId: payslipData.userId,
       },
     });
 
-    res.status(200).json({ message: "Payslip sent successfully." });
+    res.status(200).json({ message: "Payslip sent successfully with PDF attachment." });
   } catch (error: any) {
     console.error("Failed to send payslip:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -230,35 +229,22 @@ router.post("/send-all", protect, async (req, res) => {
   }
 
   try {
-    // 1. Find the processed run
     const processedRun = await prisma.payrollRun.findUnique({
-      where: {
-        tenantId_month_year: {
-          tenantId: tenantId!,
-          month,
-          year,
-        },
-      },
-      include: {
-        items: true, // Get all payslip items
-      },
+      where: { tenantId_month_year: { tenantId: tenantId!, month, year } },
+      include: { items: true },
     });
 
     if (!processedRun) {
-      return res
-        .status(404)
-        .json({ message: "Payroll run not found for that month." });
+      return res.status(404).json({ message: "Payroll run not found for that month." });
     }
 
-    const monthName = new Date(year, month - 1).toLocaleString("default", {
-      month: "long",
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
     });
-    const subject = `Your Salary Slip for ${monthName} ${year}`;
+    const tenantName = tenant?.name || 'Your Company';
 
-    // 2. Loop through all payslip items and send emails one by one
-    // In a real-world app, you would add this to a "job queue" (like BullMQ)
-    // so it doesn't block the server. For now, we do it directly.
-
+    const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long' });
     let successCount = 0;
     let failCount = 0;
 
@@ -266,8 +252,8 @@ router.post("/send-all", protect, async (req, res) => {
       try {
         const payslipData = await getFormattedPayslip(item.id, tenantId!);
         if (payslipData) {
-          const htmlBody = formatPayslipHtml(payslipData);
-          await sendEmail(payslipData.user.email, subject, htmlBody);
+          // Each email gets the rich HTML + PDF attachment
+          await sendPayslipEmail(payslipData, tenantName);
           successCount++;
         } else {
           failCount++;
@@ -278,7 +264,6 @@ router.post("/send-all", protect, async (req, res) => {
       }
     }
 
-    // 3. Log this bulk action
     await prisma.activityLog.create({
       data: {
         tenantId: tenantId!,
@@ -298,38 +283,27 @@ router.post("/send-all", protect, async (req, res) => {
 });
 
 // ====================================================================
-// ADMIN: Ge the Payslip and download it as PDF
+// EMPLOYEE: Get Latest Payslip Metadata (for dashboard card)
 // ====================================================================
 /**
- * @route   POST /api/payslips/send-all
- * @desc    Sends all payslips for a given month to all employees.
- * @access  Private (Admin)
- * @body    { month: number, year: number }
+ * @route   GET /api/payroll/GetmyPayslip
+ * @desc    Returns metadata for the employee's latest payslip (JSON only — no PDF).
+ * @access  Private (any role — employee, manager, etc.)
  */
-
-// Route to get the latest payslip and download as PDF
 router.get("/GetmyPayslip", protect, async (req, res) => {
   try {
     const { userId, tenantId } = req.user!;
 
-    // Fetch the latest payslip for the employee
-    const payslipData: any = await prisma.payrollRun.findFirst({
+    // Fetch the latest payroll run that includes this employee
+    const payrollRun = await prisma.payrollRun.findFirst({
       where: {
         tenantId: tenantId,
-        items: {
-          some: {
-            userId: userId,
-          },
-        },
+        items: { some: { userId } },
       },
-      orderBy: {
-        processedAt: "desc",
-      },
+      orderBy: { processedAt: "desc" },
       include: {
         items: {
-          where: {
-            userId: userId,
-          },
+          where: { userId },
           select: {
             id: true,
             basicSalary: true,
@@ -338,49 +312,74 @@ router.get("/GetmyPayslip", protect, async (req, res) => {
             grossSalary: true,
             pfDeduction: true,
             taxDeduction: true,
+            lwpDeduction: true,
+            otherDeductions: true,
             netSalary: true,
           },
         },
       },
     });
 
-    if (!payslipData || payslipData.items.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "Payslip not found for this user." });
+    if (!payrollRun || payrollRun.items.length === 0) {
+      return res.status(404).json({ message: "Payslip not found for this user." });
     }
 
-    // Get the profile data
-    const profile: any = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        employeeProfile: {
-          select: {
-            employeeId: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-      },
+    const item = payrollRun.items[0];
+
+    return res.status(200).json({
+      payrollRunId: payrollRun.id,
+      payrollRunItems: [item], // frontend reads payrollRunItems[0].id as payslipId
+      month: payrollRun.month,
+      year: payrollRun.year,
+      status: payrollRun.status,
+    });
+  } catch (error) {
+    console.error("Error fetching employee payslip:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+});
+
+// ====================================================================
+// EMPLOYEE: Download Own Payslip as PDF
+// ====================================================================
+/**
+ * @route   GET /api/payroll/my/:payslipItemId/download
+ * @desc    Generates and downloads a PDF for the calling employee's own payslip.
+ *          Validates that the payslip belongs to the requesting user.
+ * @access  Private (any authenticated user — employee, manager, etc.)
+ */
+router.get("/my/:payslipItemId/download", protect, async (req, res) => {
+  const { userId, tenantId } = req.user!;
+  const { payslipItemId } = req.params;
+
+  try {
+    // Fetch payslip item, ensuring it belongs to the calling user's tenant
+    const payslipData = await getFormattedPayslip(payslipItemId, tenantId!);
+
+    if (!payslipData) {
+      return res.status(404).json({ message: "Payslip not found." });
+    }
+
+    // Security check — employee can only download their OWN payslip
+    if (payslipData.userId !== userId) {
+      return res.status(403).json({ message: "Forbidden: This payslip does not belong to you." });
+    }
+
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
     });
 
-    if (!profile || !profile.employeeProfile) {
-      return res.status(404).json({ message: "Employee profile not found." });
-    }
+    const profile = payslipData.user.employeeProfile;
+    const filename = `Payslip-${payslipData.run.year}-${payslipData.run.month}-${profile?.employeeId || profile?.lastName
+      }.pdf`;
 
-    // Set up the filename for PDF download
-    const filename = `Payslip-${payslipData.year}-${payslipData.month}-${
-      profile.employeeProfile.employeeId || profile.employeeProfile.lastName
-    }.pdf`;
-
-    // Set headers for PDF download
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
-    // Generate the PDF and stream it to the response
-    generateSinglePayslipPdf({ ...payslipData, user: profile.user }, res);
-  } catch (error) {
-    console.error("Error fetching or generating payslip:", error);
+    generateSinglePayslipPdf({ ...payslipData, tenant: tenant! }, res);
+  } catch (error: any) {
+    console.error("Failed to generate employee payslip PDF:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 });

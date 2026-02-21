@@ -91,14 +91,14 @@ export const employeeService = {
   },
 
   getSurveyById: async (id: string) => {
-  const { data } = await apiClient.get(`/surveys/${id}`);
-  return data;
-},
+    const { data } = await apiClient.get(`/surveys/${id}`);
+    return data;
+  },
 
-submitSurvey: async (id: string, payload: any) => {
-  const { data } = await apiClient.post(`/surveys/${id}/submit`, payload);
-  return data;
-},
+  submitSurvey: async (id: string, payload: any) => {
+    const { data } = await apiClient.post(`/surveys/${id}/submit`, payload);
+    return data;
+  },
 
   checkOut: async (employeeId: string, checkOutTime: string) => {
     const { data } = await apiClient.post(`/incoming/attendance/check-out`, {
@@ -113,21 +113,21 @@ submitSurvey: async (id: string, payload: any) => {
     return data as any[];
   },
 
-  getTodayAttendance : async() =>{
-    const {data} = await apiClient.get("/incoming/status/today")
+  getTodayAttendance: async () => {
+    const { data } = await apiClient.get("/incoming/status/today")
 
     return data as {
-    checkedIn: boolean;
-    checkedOut: boolean;
-    checkInTime?: string;
-    checkOutTime?: string;
-  };
+      checkedIn: boolean;
+      checkedOut: boolean;
+      checkInTime?: string;
+      checkOutTime?: string;
+    };
   },
 
 
   // LEAVE (Employee)
   getLeaveDashboard: async () => {
-    const { data } = await apiClient.get<LeaveDashboard>(`/employee/getLeave`); 
+    const { data } = await apiClient.get<LeaveDashboard>(`/employee/getLeave`);
     // path explanation:
     // your leave router shows: router.get("/getLeave", protect, ...)
     // if your axios baseURL already includes /api, this resolves to /api/getLeave
@@ -193,9 +193,9 @@ submitSurvey: async (id: string, payload: any) => {
   },
 
   downloadPayslip: async (payslipId: string) => {
-    // your admin download route: router.get('/:payslipId/download', ...)
-    // assuming this router is mounted at /api/payslips:
-    const response = await apiClient.get(`/payroll/${payslipId}/download`, {
+    // Employee-accessible route: /api/payroll/my/:payslipItemId/download
+    // (does NOT require ADMIN role — validates ownership server-side)
+    const response = await apiClient.get(`/payroll/my/${payslipId}/download`, {
       responseType: "blob",
     });
     const cd = response.headers["content-disposition"] as string | undefined;

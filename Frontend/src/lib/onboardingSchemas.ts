@@ -21,17 +21,37 @@ export const basicInfoSchema = z.object({
   employeeId: z.string().min(1, "Employee ID is required"),
   joiningDate: z.string().min(1, "Joining date is required"),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
-  employeeType: z.enum(["full-time", "part-time", "contractor"]),
+  employeeType: z.enum(["full-time", "part-time", "contractor", "experienced"]),
   accessRole: z.enum(["OPERATOR", "MANAGER", "PROJECT_MANAGER"]),
-}).refine((data) => {
+  // Experienced-hire fields (conditionally required)
+  previousCompanyName: z.string().optional(),
+  previousDesignation: z.string().optional(),
+  reportingManagerName: z.string().optional(),
+  reportingManagerContact: z.string().optional(),
+}).superRefine((data, ctx) => {
   // Department is required for MANAGER and OPERATOR
   if ((data.accessRole === "MANAGER" || data.accessRole === "OPERATOR") && !data.department) {
-    return false;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Department is required for Manager and Employee roles",
+      path: ["department"],
+    });
   }
-  return true;
-}, {
-  message: "Department is required for Manager and Employee roles",
-  path: ["department"],
+  // Experienced-hire fields are required when employeeType === "experienced"
+  if (data.employeeType === "experienced") {
+    if (!data.previousCompanyName) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Previous company name is required", path: ["previousCompanyName"] });
+    }
+    if (!data.previousDesignation) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Previous designation is required", path: ["previousDesignation"] });
+    }
+    if (!data.reportingManagerName) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Reporting manager name is required", path: ["reportingManagerName"] });
+    }
+    if (!data.reportingManagerContact) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Reporting manager contact is required", path: ["reportingManagerContact"] });
+    }
+  }
 });
 
 // export const documentsSchema = z.object({
@@ -46,6 +66,7 @@ export const documentsSchema = z.object({
   pan: z.array(z.any()).optional(),
   bank: z.array(z.any()).optional(),
   education: z.array(z.any()).optional(),
+  experienceLetter: z.array(z.any()).optional(),
 });
 export const offerSchema = z.object({
   roleTitle: z.string().min(1, "Role title is required"),

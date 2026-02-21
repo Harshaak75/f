@@ -64,9 +64,14 @@ const initialBasic: CreateOnboardingPayload = {
   designation: "",
   department: "", // Department field
   joiningDate: "", // yyyy-mm-dd
-  employeeType: "", // full-time | part-time | contractor
+  employeeType: "", // full-time | part-time | contractor | experienced
   dateOfBirth: "", // yyyy-mm-dd
   accessRole: "OPERATOR",
+  // Experienced-hire fields
+  previousCompanyName: "",
+  previousDesignation: "",
+  reportingManagerName: "",
+  reportingManagerContact: "",
 };
 
 type DocsState = {
@@ -74,6 +79,7 @@ type DocsState = {
   pan: File[];
   bank: File[];
   education: File[];
+  experienceLetter: File[]; // For experienced hires
 };
 
 const initialDocs: DocsState = {
@@ -81,6 +87,7 @@ const initialDocs: DocsState = {
   pan: [],
   bank: [],
   education: [],
+  experienceLetter: [],
 };
 
 const initialOffer: OfferPayload = {
@@ -192,6 +199,13 @@ export default function EmployeeOnboarding() {
           throw new Error("Please fill all required fields in Basic Info.");
         }
 
+        // Extra guard for experienced hires
+        if (basic.employeeType === "experienced") {
+          if (!basic.previousCompanyName || !basic.previousDesignation || !basic.reportingManagerName || !basic.reportingManagerContact) {
+            throw new Error("Please fill all previous company and reporting manager details.");
+          }
+        }
+
         const created = await employeeFunctionalityService.createOnboarding(
           basic
         );
@@ -205,7 +219,6 @@ export default function EmployeeOnboarding() {
         });
       }
 
-      // STEP 2 -> Upload multiple documents (batch)
       // STEP 2 -> Upload multiple documents (optional)
       if (currentStep === 2) {
         if (!profileId) throw new Error("Profile not created yet.");
@@ -224,6 +237,12 @@ export default function EmployeeOnboarding() {
         docs.education.forEach((f) =>
           items.push({ documentType: "Education Certificates", file: f })
         );
+        // Experience / Relieving Letter — only for experienced hires
+        if (basic.employeeType === "experienced") {
+          docs.experienceLetter.forEach((f) =>
+            items.push({ documentType: "Experience Letter", file: f })
+          );
+        }
 
         // 🔑 KEY FIX: skip upload if no documents
         if (items.length === 0) {
@@ -424,6 +443,7 @@ export default function EmployeeOnboarding() {
                 docs={docs}
                 setDocs={setDocs}
                 onValidityChange={setIsStepValid}
+                employeeType={basic.employeeType}
               />
             )}
             {currentStep === 3 && (
@@ -531,6 +551,10 @@ function BasicInfoForm({
       dateOfBirth: basic.dateOfBirth,
       employeeType: basic.employeeType as any,
       accessRole: basic.accessRole,
+      previousCompanyName: basic.previousCompanyName || "",
+      previousDesignation: basic.previousDesignation || "",
+      reportingManagerName: basic.reportingManagerName || "",
+      reportingManagerContact: basic.reportingManagerContact || "",
     },
   });
 
@@ -563,6 +587,11 @@ function BasicInfoForm({
         dateOfBirth: values.dateOfBirth ?? "",
         employeeType: (values.employeeType as any) ?? "",
         accessRole: values.accessRole ?? "OPERATOR",
+        // Experienced-hire fields
+        previousCompanyName: values.previousCompanyName ?? "",
+        previousDesignation: values.previousDesignation ?? "",
+        reportingManagerName: values.reportingManagerName ?? "",
+        reportingManagerContact: values.reportingManagerContact ?? "",
       }));
     });
     return () => sub.unsubscribe();
@@ -811,6 +840,7 @@ function BasicInfoForm({
                   <SelectItem value="full-time">Full-time</SelectItem>
                   <SelectItem value="part-time">Part-time</SelectItem>
                   <SelectItem value="contractor">Contractor</SelectItem>
+                  <SelectItem value="experienced">Experienced Hire</SelectItem>
                 </SelectContent>
               </Select>
             )}
@@ -867,6 +897,78 @@ function BasicInfoForm({
           <div /> {/* Empty div for grid alignment */}
         </div>
       )}
+
+      {/* Experienced Hire Fields - Conditional */}
+      {watch("employeeType") === "experienced" && (
+        <div className="space-y-4 pt-4 border-t border-border">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 rounded-full bg-amber-500" />
+            <h4 className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+              Previous Employment Details (Required for Experienced Hires)
+            </h4>
+          </div>
+
+          {/* Previous Company Name + Previous Designation */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Previous Company Name *</Label>
+              <input
+                {...register("previousCompanyName")}
+                className="input-base w-full p-1 border-none outline-gray-100"
+                placeholder="e.g., Acme Corporation"
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+              {errors.previousCompanyName && (
+                <p className="text-sm text-red-500 mt-1">{errors.previousCompanyName.message}</p>
+              )}
+            </div>
+            <div>
+              <Label>Previous Designation *</Label>
+              <input
+                {...register("previousDesignation")}
+                className="input-base w-full p-1 border-none outline-gray-100"
+                placeholder="e.g., Software Engineer"
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+              {errors.previousDesignation && (
+                <p className="text-sm text-red-500 mt-1">{errors.previousDesignation.message}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Reporting Manager Name + Contact */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Reporting Manager Name *</Label>
+              <input
+                {...register("reportingManagerName")}
+                className="input-base w-full p-1 border-none outline-gray-100"
+                placeholder="e.g., John Smith"
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+              {errors.reportingManagerName && (
+                <p className="text-sm text-red-500 mt-1">{errors.reportingManagerName.message}</p>
+              )}
+            </div>
+            <div>
+              <Label>Reporting Manager Contact *</Label>
+              <input
+                {...register("reportingManagerContact")}
+                className="input-base w-full p-1 border-none outline-gray-100"
+                placeholder="e.g., +91 98765 43210 or manager@acme.com"
+                autoCapitalize="none"
+                autoComplete="off"
+              />
+              {errors.reportingManagerContact && (
+                <p className="text-sm text-red-500 mt-1">{errors.reportingManagerContact.message}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -877,10 +979,12 @@ function DocumentsForm({
   docs,
   setDocs,
   onValidityChange,
+  employeeType,
 }: {
   docs: DocsState;
   setDocs: React.Dispatch<React.SetStateAction<DocsState>>;
   onValidityChange: (v: boolean) => void;
+  employeeType?: string;
 }) {
   type DocsFormType = z.infer<typeof documentsSchema>;
 
@@ -897,6 +1001,7 @@ function DocumentsForm({
       pan: docs.pan,
       bank: docs.bank,
       education: docs.education,
+      experienceLetter: docs.experienceLetter,
     },
   });
 
@@ -911,6 +1016,7 @@ function DocumentsForm({
     setValue("pan", docs.pan as any, { shouldValidate: true });
     setValue("bank", docs.bank as any, { shouldValidate: true });
     setValue("education", docs.education as any, { shouldValidate: true });
+    setValue("experienceLetter", docs.experienceLetter as any, { shouldValidate: true });
   }, [docs, setValue]);
 
   // Add files
@@ -987,6 +1093,18 @@ function DocumentsForm({
         {renderPicker("PAN Card", "pan")}
         {renderPicker("Bank Proof", "bank")}
         {renderPicker("Education Certificates", "education")}
+
+        {/* Experience / Relieving Letter — shown only for experienced hires */}
+        {employeeType === "experienced" && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                Required for Experienced Hires
+              </span>
+            </div>
+            {renderPicker("Experience / Relieving Letter", "experienceLetter")}
+          </div>
+        )}
       </div>
     </div>
   );

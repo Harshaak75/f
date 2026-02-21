@@ -66,7 +66,7 @@ function mapRunStatus(s: string): "Paid" | "Processed" | "Draft" {
   if (norm === "PROCESSED") return "Processed";
   if (norm === "PAID") return "Paid";
   if (norm === "DRAFT") return "Draft";
-  return "Processed"; // default
+  return "Processed";
 }
 function formatINR(n: number) {
   try {
@@ -83,7 +83,6 @@ function formatINR(n: number) {
 export default function Payslips() {
   const { toast } = useToast();
 
-  // default period → current month/year
   const now = new Date();
   const defaultKey = toMonthYearKey(now.getMonth() + 1, now.getFullYear());
 
@@ -91,8 +90,15 @@ export default function Payslips() {
   const [{ month, year }, setPeriod] = useState(parseMonthYearKey(defaultKey));
 
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null); // id for per-row actions
   const [bulkLoading, setBulkLoading] = useState(false);
+
+  // ── Per-action loading states ──────────────────────────────────────────────
+  // Track independently: which row is downloading vs which is emailing
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [emailingId, setEmailingId] = useState<string | null>(null);
+  // Dialog "Download PDF" button has its own spinner
+  const [dialogDownloading, setDialogDownloading] = useState(false);
+  // ──────────────────────────────────────────────────────────────────────────
 
   const [payslips, setPayslips] = useState<PayslipDto[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -145,72 +151,86 @@ export default function Payslips() {
     return totals;
   }, [payslips]);
 
+  // ── Download handler (table row icon) ──────────────────────────────────────
   const handleDownload = async (p: PayslipDto) => {
     try {
-      setActionLoading(p.id);
+      setDownloadingId(p.id);
       const blob = await payrollService.download(p.id);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const fileMonth = String(
-        Object.entries(MONTH_LABEL).find(
-          ([k]) => MONTH_LABEL[Number(k)] === p.month
-        )?.[1] || p.month
-      );
+      const fileMonth = MONTH_LABEL[
+        Number(Object.entries(MONTH_LABEL).find(([, v]) => v === p.month)?.[0])
+      ] || p.month;
       a.download = `Payslip-${p.year}-${fileMonth}-${p.employeeId}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      toast({ title: "Downloaded", description: `Payslip for ${p.employeeName}` });
     } catch (e: any) {
-      const msg =
-        e?.response?.data?.message || e?.message || "Download failed.";
-      toast({
-        title: "Download failed",
-        description: msg,
-        variant: "destructive",
-      });
+      const msg = e?.response?.data?.message || e?.message || "Download failed.";
+      toast({ title: "Download failed", description: msg, variant: "destructive" });
     } finally {
-      setActionLoading(null);
+      setDownloadingId(null);
     }
   };
 
+  // ── Download handler (inside the dialog) ──────────────────────────────────
+  const handleDialogDownload = async (p: PayslipDto) => {
+    try {
+      setDialogDownloading(true);
+      const blob = await payrollService.download(p.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const fileMonth = MONTH_LABEL[
+        Number(Object.entries(MONTH_LABEL).find(([, v]) => v === p.month)?.[0])
+      ] || p.month;
+      a.download = `Payslip-${p.year}-${fileMonth}-${p.employeeId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Downloaded", description: `Payslip for ${p.employeeName}` });
+    } catch (e: any) {
+      const msg = e?.response?.data?.message || e?.message || "Download failed.";
+      toast({ title: "Download failed", description: msg, variant: "destructive" });
+    } finally {
+      setDialogDownloading(false);
+    }
+  };
+
+  // ── Email handler ──────────────────────────────────────────────────────────
   const handleSend = async (p: PayslipDto) => {
     try {
-      setActionLoading(p.id);
+      setEmailingId(p.id);
       await payrollService.send(p.id);
       toast({
-        title: "Payslip sent",
-        description: `Emailed to ${p.employeeName}.`,
+        title: "Payslip sent ✉️",
+        description: `Salary slip emailed to ${p.employeeName}'s personal email.`,
       });
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.message || "Email failed.";
-      toast({
-        title: "Email failed",
-        description: msg,
-        variant: "destructive",
-      });
+      toast({ title: "Email failed", description: msg, variant: "destructive" });
     } finally {
-      setActionLoading(null);
+      setEmailingId(null);
     }
   };
 
+  // ── Bulk send handler ──────────────────────────────────────────────────────
   const handleSendAll = async () => {
     try {
       setBulkLoading(true);
       const resp = await payrollService.sendAll({ month, year });
       toast({
-        title: "Bulk email",
-        description: resp.message || "Triggered sending.",
+        title: "Bulk email sent ✉️",
+        description: resp.message || "Salary slips sent to all employees.",
       });
     } catch (e: any) {
       const msg =
         e?.response?.data?.message || e?.message || "Bulk email failed.";
-      toast({
-        title: "Bulk email failed",
-        description: msg,
-        variant: "destructive",
-      });
+      toast({ title: "Bulk email failed", description: msg, variant: "destructive" });
     } finally {
       setBulkLoading(false);
     }
@@ -228,7 +248,7 @@ export default function Payslips() {
         <div>
           <h1 className="text-3xl font-semibold text-foreground">Payslips</h1>
           <p className="text-muted-foreground mt-1">
-            View and download employee payslips
+            View, download, and email employee salary slips
           </p>
         </div>
         <div className="flex gap-2">
@@ -298,7 +318,6 @@ export default function Payslips() {
             />
           </div>
 
-          {/* Month selector (key = "m-y") */}
           <Select value={monthKey} onValueChange={setMonthKey}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder={`${MONTH_LABEL[month]} ${year}`} />
@@ -350,6 +369,10 @@ export default function Payslips() {
               ) : (
                 filtered.map((p) => {
                   const uiStatus = mapRunStatus(p.status);
+                  const isThisDownloading = downloadingId === p.id;
+                  const isThisEmailing = emailingId === p.id;
+                  const isAnyActionForRow = isThisDownloading || isThisEmailing;
+
                   return (
                     <TableRow key={p.id}>
                       <TableCell className="font-medium">
@@ -372,49 +395,53 @@ export default function Payslips() {
                             uiStatus === "Paid"
                               ? "default"
                               : uiStatus === "Processed"
-                              ? "secondary"
-                              : "outline"
+                                ? "secondary"
+                                : "outline"
                           }
                         >
                           {uiStatus}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
-                          {/* View */}
+                        <div className="flex gap-1 items-center">
+                          {/* ── View (eye) ── */}
                           <Button
                             variant="ghost"
                             size="sm"
+                            title="Preview payslip"
                             onClick={() => {
-                              setSelectedPayslipsForDialog(p);
+                              setSelectedPayslip(p);
                               setIsViewDialogOpen(true);
                             }}
+                            disabled={isAnyActionForRow}
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
 
-                          {/* Download */}
+                          {/* ── Download PDF ── */}
                           <Button
                             variant="ghost"
                             size="sm"
+                            title="Download PDF"
                             onClick={() => handleDownload(p)}
-                            disabled={actionLoading === p.id}
+                            disabled={isAnyActionForRow}
                           >
-                            {actionLoading === p.id ? (
+                            {isThisDownloading ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               <Download className="h-4 w-4" />
                             )}
                           </Button>
 
-                          {/* Email */}
+                          {/* ── Email payslip ── */}
                           <Button
                             variant="ghost"
                             size="sm"
+                            title="Email salary slip to employee"
                             onClick={() => handleSend(p)}
-                            disabled={actionLoading === p.id}
+                            disabled={isAnyActionForRow}
                           >
-                            {actionLoading === p.id ? (
+                            {isThisEmailing ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               <Mail className="h-4 w-4" />
@@ -431,7 +458,7 @@ export default function Payslips() {
         </div>
       </Card>
 
-      {/* View Dialog */}
+      {/* ── View / Preview Dialog ─────────────────────────────────────────── */}
       <Dialog open={isViewDialogOpen} onOpenChange={setIsViewDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -442,47 +469,26 @@ export default function Payslips() {
               <div className="text-center pb-4 border-b">
                 <h2 className="text-2xl font-bold">Dotspeaks HRM</h2>
                 <p className="text-muted-foreground">
-                  Salary Slip - {selectedPayslip.month} {selectedPayslip.year}
+                  Salary Slip — {selectedPayslip.month} {selectedPayslip.year}
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <KV
-                  label="Employee Name"
-                  value={selectedPayslip.employeeName}
-                />
+                <KV label="Employee Name" value={selectedPayslip.employeeName} />
                 <KV label="Employee ID" value={selectedPayslip.employeeId} />
               </div>
 
               <Section title="Earnings">
-                <Row
-                  label="Basic Salary"
-                  value={formatINR(selectedPayslip.basicSalary)}
-                />
+                <Row label="Basic Salary" value={formatINR(selectedPayslip.basicSalary)} />
                 <Row label="HRA" value={formatINR(selectedPayslip.hra)} />
-                <Row
-                  label="Special Allowance"
-                  value={formatINR(selectedPayslip.allowances)}
-                />
+                <Row label="Special Allowance" value={formatINR(selectedPayslip.allowances)} />
                 <Divider />
-                <Row
-                  label="Gross Salary"
-                  value={formatINR(selectedPayslip.grossSalary)}
-                  bold
-                />
+                <Row label="Gross Salary" value={formatINR(selectedPayslip.grossSalary)} bold />
               </Section>
 
               <Section title="Deductions">
-                <Row
-                  label="PF Contribution"
-                  value={formatINR(selectedPayslip.pf)}
-                  negative
-                />
-                <Row
-                  label="Income Tax"
-                  value={formatINR(selectedPayslip.tax)}
-                  negative
-                />
+                <Row label="PF Contribution" value={formatINR(selectedPayslip.pf)} negative />
+                <Row label="Income Tax (TDS)" value={formatINR(selectedPayslip.tax)} negative />
                 <Divider />
                 <Row
                   label="Total Deductions"
@@ -501,21 +507,35 @@ export default function Payslips() {
                 </div>
               </div>
 
+              {/* Dialog action buttons */}
               <div className="flex gap-2">
+                {/* Download PDF with spinner */}
                 <Button
                   className="flex-1"
-                  onClick={() => handleDownload(selectedPayslip)}
+                  onClick={() => handleDialogDownload(selectedPayslip)}
+                  disabled={dialogDownloading || emailingId === selectedPayslip.id}
                 >
-                  <Download className="mr-2 h-4 w-4" />
-                  Download PDF
+                  {dialogDownloading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
+                  {dialogDownloading ? "Generating PDF…" : "Download PDF"}
                 </Button>
+
+                {/* Email payslip */}
                 <Button
                   variant="outline"
                   className="flex-1"
                   onClick={() => handleSend(selectedPayslip)}
+                  disabled={dialogDownloading || emailingId === selectedPayslip.id}
                 >
-                  <Mail className="mr-2 h-4 w-4" />
-                  Email Payslip
+                  {emailingId === selectedPayslip.id ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="mr-2 h-4 w-4" />
+                  )}
+                  {emailingId === selectedPayslip.id ? "Sending…" : "Email Payslip"}
                 </Button>
               </div>
             </div>
@@ -524,10 +544,6 @@ export default function Payslips() {
       </Dialog>
     </div>
   );
-
-  function setSelectedPayslipsForDialog(p: PayslipDto) {
-    setSelectedPayslip(p);
-  }
 }
 
 /* ---------- tiny UI helpers ---------- */
@@ -568,9 +584,8 @@ function Row({
     <div className="flex justify-between">
       <span className={bold ? "font-semibold" : ""}>{label}</span>
       <span
-        className={`${bold ? "font-semibold" : ""} ${
-          negative ? "text-destructive" : ""
-        }`}
+        className={`${bold ? "font-semibold" : ""} ${negative ? "text-destructive" : ""
+          }`}
       >
         {value}
       </span>

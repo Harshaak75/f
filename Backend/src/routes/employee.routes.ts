@@ -122,6 +122,11 @@ router.post("/create-onboarding", protect, async (req, res) => {
     employeeType,
     dateOfBirth, // "YYYY-MM-DD"
     accessRole,
+    // Experienced-hire fields (optional, only present when employeeType === 'experienced')
+    previousCompanyName,
+    previousDesignation,
+    reportingManagerName,
+    reportingManagerContact,
   } = req.body;
 
   if (
@@ -200,6 +205,11 @@ router.post("/create-onboarding", protect, async (req, res) => {
               accessRole,
               userId: existingUser.id,
               tenantId,
+              // Experienced-hire fields
+              previousCompanyName: employeeType === 'experienced' ? previousCompanyName : null,
+              previousDesignation: employeeType === 'experienced' ? previousDesignation : null,
+              reportingManagerName: employeeType === 'experienced' ? reportingManagerName : null,
+              reportingManagerContact: employeeType === 'experienced' ? reportingManagerContact : null,
             },
           });
         } else {
@@ -220,6 +230,11 @@ router.post("/create-onboarding", protect, async (req, res) => {
               department: normalizedDepartment,
               joiningDate: joiningDateIso,
               employeeType,
+              // Experienced-hire fields
+              previousCompanyName: employeeType === 'experienced' ? previousCompanyName : null,
+              previousDesignation: employeeType === 'experienced' ? previousDesignation : null,
+              reportingManagerName: employeeType === 'experienced' ? reportingManagerName : null,
+              reportingManagerContact: employeeType === 'experienced' ? reportingManagerContact : null,
             },
           });
         }
@@ -262,6 +277,11 @@ router.post("/create-onboarding", protect, async (req, res) => {
           accessRole,
           userId: newUser.id,
           tenantId,
+          // Experienced-hire fields
+          previousCompanyName: employeeType === 'experienced' ? previousCompanyName : null,
+          previousDesignation: employeeType === 'experienced' ? previousDesignation : null,
+          reportingManagerName: employeeType === 'experienced' ? reportingManagerName : null,
+          reportingManagerContact: employeeType === 'experienced' ? reportingManagerContact : null,
         },
       });
 

@@ -1,0 +1,71 @@
+name: Deploy Dev Branch
+
+on:
+  push:
+    branches:
+      - develop        # Only runs when you push to develop
+
+jobs:
+  deploy:
+    name: Deploy to VPS Dev Environment
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: SSH into VPS and Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: hrmdev
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 20m      # Build can take time
+          script: |
+            set -e    # Stop if any command fails
+
+            echo "======================================="
+            echo "  HRM DEV DEPLOY STARTED"
+            echo "======================================="
+
+            cd ~/projects/hrm-app
+
+            # ---- Pull latest develop code ----
+            echo ">>> Pulling latest code..."
+            git fetch origin
+            git checkout develop
+            git pull origin develop
+
+            # ==============================
+            # BACKEND - mirrors your manual process
+            # ==============================
+            echo ">>> Deploying backend..."
+            docker compose -f docker-compose.dev-backend.yml down
+            docker compose -f docker-compose.dev-backend.yml build --no-cache
+            docker compose -f docker-compose.dev-backend.yml up -d
+
+            # ==============================
+            # FRONTEND - mirrors your manual process
+            # ==============================
+            echo ">>> Deploying frontend..."
+            cd ~/projects/hrm-app/Frontend
+
+            docker stop hrm-frontend-dev  || true    # don't fail if not running
+            docker rm hrm-frontend-dev    || true    # don't fail if not exists
+
+            docker build --no-cache -t hrm-frontend-dev -f Dockerfile.dev .
+
+            docker run -d \
+              --name hrm-frontend-dev \
+              --network hrm-dev-network \
+              -p 3001:80 \
+              hrm-frontend-dev
+
+            # ==============================
+            # CLEANUP
+            # ==============================
+            echo ">>> Cleaning up old images..."
+            docker image prune -f
+
+            echo "======================================="
+            echo "  DEV DEPLOY COMPLETE!"
+            echo "  Frontend → http://${{ secrets.VPS_HOST }}:3001"
+            echo "  Backend  → http://${{ secrets.VPS_HOST }}:5001"
+            echo "======================================="

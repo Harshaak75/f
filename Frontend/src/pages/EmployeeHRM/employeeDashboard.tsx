@@ -193,6 +193,7 @@ export default function EmployeeDashboard() {
   );
 
   const [surveys, setSurveys] = useState<any[]>([]);
+  const [downloadingPayslip, setDownloadingPayslip] = useState(false);
   const [surveyLoading, setSurveyLoading] = useState(false);
 
   const loadSurveys = async () => {
@@ -252,13 +253,16 @@ export default function EmployeeDashboard() {
   const handleDownloadPayslip = async () => {
     if (!latestPayslip) return;
     try {
+      setDownloadingPayslip(true);
       await employeeService.downloadPayslip(latestPayslip.payslipId);
     } catch (e: any) {
       toast({
         title: "Download failed",
-        description: e?.message ?? "Please try again.",
+        description: e?.response?.data?.message ?? e?.message ?? "Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setDownloadingPayslip(false);
     }
   };
 
@@ -409,9 +413,18 @@ export default function EmployeeDashboard() {
                   <Button
                     variant="outline"
                     onClick={handleDownloadPayslip}
+                    disabled={downloadingPayslip}
                     className="w-full sm:w-auto"
                   >
-                    <Download className="mr-2 h-4 w-4" /> Download
+                    {downloadingPayslip ? (
+                      <span className="flex items-center gap-2">
+                        <RefreshCw className="h-4 w-4 animate-spin" /> Generating...
+                      </span>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" /> Download PDF
+                      </>
+                    )}
                   </Button>
                 </div>
               ) : (
